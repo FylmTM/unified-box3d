@@ -51,6 +51,43 @@ On Linux x64 and arm64, Windows x64 and macOS ARM64, CI:
   sleep, queries, one and four workers) and requires **bit-identical per-tick traces** (`./b3 compare`);
 - runs upstream's public-API C tests and benchmarks against both.
 
+## Performance
+
+On par with the original; faster in most of upstream's benchmarks, slower in the ones dominated by convex hulls and
+joints, which are still to be profiled. Windows x64, one machine; the library as released (`-o:speed`, no asserts or
+bounds checks, `x86-64-v2`), the original as upstream builds it (clang `-O2`, `NDEBUG`).
+
+Upstream's benchmarks (`./b3 compare --bench`: the same C programs against both, one worker; the final counters
+match in every one):
+
+| benchmark | original (ms) | this library (ms) | ratio |
+|---|---:|---:|---:|
+| trees50 | 163 | 133 | 0.82 |
+| trees100 | 95 | 83 | 0.87 |
+| many_pyramids | 1592 | 1404 | 0.88 |
+| trees25 | 296 | 271 | 0.91 |
+| large_world | 4.9 | 4.5 | 0.92 |
+| mesh_drop | 1375 | 1282 | 0.93 |
+| spinner | 2263 | 2108 | 0.93 |
+| rain | 1478 | 1382 | 0.94 |
+| sleep | 618 | 581 | 0.94 |
+| village | 1983 | 1868 | 0.94 |
+| large_pyramid | 1226 | 1193 | 0.97 |
+| washer | 17255 | 18702 | 1.08 |
+| joint_grid | 809 | 1018 | 1.26 |
+| convex_pile | 4677 | 5986 | 1.28 |
+| junkyard | 11546 | 15083 | 1.31 |
+
+Rollback (`./b3 bench`: boxes stacked on a ground; µs, median): an in-process snapshot is a memcpy, where the
+original's serializer walks the world.
+
+| 1000 boxes | original (C, serializer) | this library |
+|---|---:|---:|
+| step, 1 / 4 workers | 336 / 232 | 311 / 169 |
+| save | 102 | ~55 |
+| restore | 178 | ~60 |
+| 8-tick rollback (restore + 8 × (step + save)), 1 / 4 workers | 3995 / 3437 | 3347 / 2467 |
+
 ## Use
 
 Releases (`<upstream commit>-r<revision>`, e.g. `3362633-r1`) carry, per platform (Windows x64, Linux x64 and
@@ -69,6 +106,15 @@ with the original). `./b3 help` (`b3.cmd` on Windows) lists the commands:
 ./b3 compare    # the original Box3D and this library, side by side
 ./b3 bench      # the scaling benchmark: the port compiled in, and through the library
 ```
+
+## AI disclosure
+
+This port was written by AI: Claude (Anthropic) agents translated upstream's C to Odin file by file, designed and
+built the rollback additions, the tooling and the CI, directed and reviewed by the maintainer, who signed off the
+design (the porting rules, the API, the rollback features) but did not review every ported line. Its correctness
+rests on the evidence above, not on line-by-line review: upstream's own tests, bit-identical traces against the
+original on four platforms, and the layout checks of every public struct against upstream's headers. Read the code
+with that in mind, and please report anything that differs from upstream in a way `SPEC.md` doesn't list.
 
 ## License
 
