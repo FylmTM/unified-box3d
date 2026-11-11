@@ -78,10 +78,11 @@ match in every one):
 | convex_pile | 4677 | 5986 | 1.28 |
 | junkyard | 11546 | 15083 | 1.31 |
 
-Rollback (`./b3 bench`: boxes stacked on a ground; µs, median): an in-process snapshot is a memcpy, where the
-original's serializer walks the world.
+Rollback (`./b3 bench`: boxes stacked on a ground; µs, median). Upstream has no save/restore; the comparison is the
+C original with a small patch that exposes its keyframe serializer, which walks the world, where this library's
+snapshot is a memcpy.
 
-| 1000 boxes | original (C, serializer) | this library |
+| 1000 boxes | C original + serializer patch | this library |
 |---|---:|---:|
 | step, 1 / 4 workers | 336 / 232 | 311 / 169 |
 | save | 102 | ~55 |
