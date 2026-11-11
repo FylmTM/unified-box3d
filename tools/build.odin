@@ -37,6 +37,41 @@ cmd_build :: proc(args: []string) -> bool {
 	return ok
 }
 
+// Writes <dir>/box3d.def (every b3 export) and makes <dir>/box3d.lib from it (Windows).
+import_library :: proc(dir: string) -> bool {
+	src, ok := read_text(path("export", "export.odin"))
+	if !ok {
+		return fail("build: cannot read export/export.odin")
+	}
+	def := strings.builder_make(context.temp_allocator)
+	strings.write_string(&def, "LIBRARY box3d.dll\nEXPORTS\n")
+	n := 0
+	for line in strings.split_lines_iterator(&src) {
+		i := strings.index(line, "link_name = \"")
+		if i < 0 {
+			continue
+		}
+		rest := line[i + len("link_name = \""):]
+		j := strings.index_byte(rest, '"')
+		if j <= 0 {
+			continue
+		}
+		fmt.sbprintf(&def, "\t%s\n", rest[:j])
+		n += 1
+	}
+	def_path := fmt.tprintf("%s/box3d.def", dir)
+	write_text(def_path, strings.to_string(def)) or_return
+	c := cc_toolchain() or_return
+	lib := fmt.tprintf("%s/box3d.lib", dir)
+	os.remove(lib)
+	cmd := strs(c.ar, "/nologo", fmt.tprintf("/def:%s", def_path), "/machine:x64", fmt.tprintf("/out:%s", lib))
+	if out, rok := cc_exec(cmd, cc_env()); !rok {
+		return fail("build: making %s failed:\n%s", lib, out)
+	}
+	log("build: %s (%d exports)", lib, n)
+	return true
+}
+
 // lib/<platform>[-debug] (git-ignored; the release zips use the same layout)
 lib_dir :: proc(debug: bool) -> string {
 	return path("lib", fmt.tprintf("%s%s", platform(), debug ? "-debug" : ""))
@@ -115,9 +150,9 @@ build_lib :: proc(debug: bool, force := false) -> (lib: string, ok: bool) {
 		return lib, fail("build: the library did not build")
 	}
 	when ODIN_OS == .Windows {
-		if _, err := os.stat(fmt.tprintf("%s/box3d.lib", dir), context.temp_allocator); err != nil {
-			return lib, fail("build: no import library box3d.lib next to %s", lib)
-		}
+		// The import library Odin's linker writes lacks the import descriptor some MSVC linkers need, so it's made
+		// the standard way: a .def of the exports (export/export.odin's link names), through llvm-lib / lib.exe.
+		import_library(dir) or_return
 	}
 	log("build: %s", lib)
 	return lib, true
