@@ -1,0 +1,14 @@
+#!/bin/sh
+# b3, the unified-box3d CLI (tools/): rebuilds itself when tools/ changed, then runs. Needs odin on PATH.
+case "$0" in
+*/*) root=${0%/*} ;;
+*) root=. ;;
+esac
+exe=
+[ "$OS" = Windows_NT ] && exe=.exe
+bin="$root/.out/b3$exe"
+if [ ! -x "$bin" ] || [ -n "$(find "$root/tools" -newer "$bin" -name '*.odin' 2>/dev/null | head -1)" ]; then
+	mkdir -p "$root/.out"
+	odin build "$root/tools" -o:minimal "-out:$bin" || exit 1
+fi
+exec "$bin" "$@"

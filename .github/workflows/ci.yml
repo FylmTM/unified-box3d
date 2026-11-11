@@ -1,0 +1,67 @@
+# Every pull request and push to main, on the four platforms the library ships for: build the shared library, run the test
+# suites, and compare it with the original (`./b3 compare --tests`: the comparison scenes' traces bit for bit with 1
+# and 4 workers, and upstream's public-API C tests against both libraries).
+#
+# Security: `contents: read`; actions pinned by commit, runner images by version (an image update can change
+# compilers, so it is a deliberate bump), Odin by its SHA-256 in pins.cfg (.github/actions/odin). Upstream Box3D
+# is fetched at the commit pinned in tools/main.odin.
+name: ci
+
+on:
+  push:
+    branches: [main] # a PR branch runs through pull_request, once
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { platform: linux-x64, os: ubuntu-24.04, b3: ./b3 }
+          - { platform: linux-arm64, os: ubuntu-24.04-arm, b3: ./b3 }
+          # The cmd shim on Windows (it proves b3.cmd too).
+          - { platform: windows-x64, os: windows-2025, b3: ./b3.cmd }
+          - { platform: macos-arm64, os: macos-15, b3: ./b3 }
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/odin
+      # Upstream Box3D's checkout and static library (./b3 upstream). Its stamp (commit, flags, compiler version)
+      # rebuilds it when stale, so the key only needs to change with the commit and the tools that build it.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .out/upstream/src
+            .out/upstream/src.stamp
+            .out/upstream/lib
+          key: upstream-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/main.odin', 'tools/upstream.odin', 'tools/cc.odin') }}
+      - name: build
+        run: ${{ matrix.b3 }} build
+      - name: test
+        run: ${{ matrix.b3 }} test
+      - name: compare with the original (traces, upstream's C tests)
+        run: ${{ matrix.b3 }} compare --tests
+      - name: package (a dry run of the release archive)
+        run: ${{ matrix.b3 }} package
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: traces-${{ matrix.platform }}
+          path: .out/compare/trace-*.txt
+          if-no-files-found: ignore
+          include-hidden-files: true # .out/ is hidden
+          retention-days: 14

@@ -1,0 +1,75 @@
+# The Odin release pinned in pins.cfg ([odin] tag and this runner's asset SHA-256): downloaded once (cached),
+# checked and put on PATH. Read with sed: nothing of the repository runs before Odin exists. Also makes sure the
+# C toolchain the comparison and Odin's linker need is there (clang, and zip for packaging, on Linux).
+name: Odin (pinned)
+description: Install the Odin release pinned in pins.cfg, and clang where missing
+runs:
+  using: composite
+  steps:
+    - id: pin
+      shell: bash
+      run: |
+        pin() { sed -n "/^\[odin\]/,/^\[/s/^$1 = \"\(.*\)\"$/\1/p" pins.cfg; }
+        tag=$(pin tag)
+        case "$RUNNER_OS-$RUNNER_ARCH" in
+          Linux-X64) asset="odin-linux-amd64-$tag.tar.gz"; sha=$(pin sha256_linux_x64) ;;
+          Linux-ARM64) asset="odin-linux-arm64-$tag.tar.gz"; sha=$(pin sha256_linux_arm64) ;;
+          macOS-ARM64) asset="odin-macos-arm64-$tag.tar.gz"; sha=$(pin sha256_macos_arm64) ;;
+          Windows-X64) asset="odin-windows-amd64-$tag.zip"; sha=$(pin sha256_windows_x64) ;;
+          *) echo "::error::no Odin for $RUNNER_OS-$RUNNER_ARCH"; exit 1 ;;
+        esac
+        if [ -z "$tag" ] || [ -z "$sha" ]; then
+          echo "::error::pins.cfg: [odin] tag or this runner's sha256 not found"
+          exit 1
+        fi
+        {
+          echo "tag=$tag"
+          echo "asset=$asset"
+          echo "sha=$sha"
+        } >> "$GITHUB_OUTPUT"
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: .out/odin
+        key: odin-${{ steps.pin.outputs.tag }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.pin.outputs.sha }}
+    - shell: bash
+      env:
+        TAG: ${{ steps.pin.outputs.tag }}
+        ASSET: ${{ steps.pin.outputs.asset }}
+        SHA: ${{ steps.pin.outputs.sha }}
+      run: |
+        dir=.out/odin
+        exe=odin; [ "$RUNNER_OS" = Windows ] && exe=odin.exe
+        find_odin() { find "$dir" -name "$exe" -type f 2>/dev/null | awk '{ print length, $0 }' | sort -n | head -1 | cut -d' ' -f2-; }
+        if [ -z "$(find_odin)" ]; then
+          mkdir -p "$dir"
+          file="$RUNNER_TEMP/$ASSET"
+          curl -fsSL --retry 5 -o "$file" "https://github.com/odin-lang/Odin/releases/download/$TAG/$ASSET"
+          # From stdin: sha256sum escapes its output (a leading \) when a path has backslashes (Windows)
+          if command -v sha256sum > /dev/null; then got=$(sha256sum < "$file" | cut -d' ' -f1); else got=$(shasum -a 256 < "$file" | cut -d' ' -f1); fi
+          if [ "$got" != "$SHA" ]; then
+            echo "::error::$ASSET: SHA-256 $got, pinned $SHA"
+            exit 1
+          fi
+          case "$ASSET" in
+            *.zip) 7z x -y -o"$dir" "$file" > /dev/null ;;
+            *) tar -xzf "$file" -C "$dir" ;;
+          esac
+        fi
+        odin=$(find_odin)
+        chmod +x "$odin" || true
+        bin=$(cd "$(dirname "$odin")" && { pwd -W 2> /dev/null || pwd; })
+        echo "$bin" >> "$GITHUB_PATH"
+        "$odin" version
+    # Linux: Odin links through clang, and the comparison builds upstream with it; the arm64 image is leaner than
+    # the x64 one. Windows images have LLVM (clang-cl) and Visual Studio; macOS has Apple clang.
+    - if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        missing=
+        command -v clang > /dev/null || missing="$missing clang"
+        command -v zip > /dev/null || missing="$missing zip"
+        if [ -n "$missing" ]; then
+          sudo apt-get update -q
+          sudo apt-get install -y -q $missing
+        fi
+        clang --version | head -1

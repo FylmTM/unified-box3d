@@ -1,0 +1,175 @@
+// Ported from box3d include/box3d/collision.h at 3362633 (PORTING.md).
+// SPDX-FileCopyrightText: 2025 Erin Catto
+// SPDX-License-Identifier: MIT
+package box3d
+
+// Get proxy user data
+DynamicTree_GetUserData :: proc(tree: ^DynamicTree, proxyId: i32) -> u64 {
+	return tree.proxies[proxyId].userData
+}
+
+// Get the AABB of a proxy
+DynamicTree_GetAABB :: proc(tree: ^DynamicTree, proxyId: i32) -> AABB {
+	return tree.nodes[tree.proxies[proxyId].node].aabb
+}
+
+// Get read only hull vertices.
+GetHullVertices :: proc(hull: ^HullData) -> [^]HullVertex {
+	if hull.vertexOffset == 0 {
+		return nil
+	}
+
+	return cast([^]HullVertex)(uintptr(hull) + uintptr(hull.vertexOffset))
+}
+
+// Get read only hull points.
+GetHullPoints :: proc(hull: ^HullData) -> [^]Vec3 {
+	if hull.pointOffset == 0 {
+		return nil
+	}
+
+	return cast([^]Vec3)(uintptr(hull) + uintptr(hull.pointOffset))
+}
+
+// Get read only hull half edges.
+GetHullEdges :: proc(hull: ^HullData) -> [^]HullHalfEdge {
+	if hull.edgeOffset == 0 {
+		return nil
+	}
+
+	return cast([^]HullHalfEdge)(uintptr(hull) + uintptr(hull.edgeOffset))
+}
+
+// Get read only hull planes.
+GetHullPlanes :: proc(hull: ^HullData) -> [^]Plane {
+	if hull.planeOffset == 0 {
+		return nil
+	}
+
+	return cast([^]Plane)(uintptr(hull) + uintptr(hull.planeOffset))
+}
+
+// Get read only hull faces.
+GetHullFaces :: proc(hull: ^HullData) -> [^]HullFace {
+	if hull.faceOffset == 0 {
+		return nil
+	}
+
+	return cast([^]HullFace)(uintptr(hull) + uintptr(hull.faceOffset))
+}
+
+// Get read only SOA vertices. This is an array of vertices with all x values,
+// y values, and z values as separate arrays. The array lengths are padded to
+// a multiple of 8. The padded values are repeats of the first value.
+GetHullSoaVertices :: proc(hull: ^HullData) -> [^]f32 {
+	if hull.soaVertexOffset == 0 {
+		return nil
+	}
+
+	return cast([^]f32)(uintptr(hull) + uintptr(hull.soaVertexOffset))
+}
+
+// Get read only SOA unit normal vectors. This is an array of normals with all x values,
+// y values, and z values as separate arrays. The array lengths are padded to
+// a multiple of 8. The padded values are 0.
+GetHullSoaNormals :: proc(hull: ^HullData) -> [^]f32 {
+	if hull.soaNormalOffset == 0 {
+		return nil
+	}
+
+	return cast([^]f32)(uintptr(hull) + uintptr(hull.soaNormalOffset))
+}
+
+// Get the dot products of the two adjacent face normals for each full edge.
+GetHullEdgeCosines :: proc(hull: ^HullData) -> [^]f32 {
+	if hull.edgeCosineOffset == 0 {
+		return nil
+	}
+
+	return cast([^]f32)(uintptr(hull) + uintptr(hull.edgeCosineOffset))
+}
+
+// Get read only mesh BVH nodes.
+GetMeshNodes :: proc(mesh: ^MeshData) -> [^]MeshNode {
+	if mesh.nodeOffset == 0 {
+		return nil
+	}
+
+	return cast([^]MeshNode)(uintptr(mesh) + uintptr(mesh.nodeOffset))
+}
+
+// Get read only mesh vertices.
+GetMeshVertices :: proc(mesh: ^MeshData) -> [^]Vec3 {
+	if mesh.vertexOffset == 0 {
+		return nil
+	}
+
+	return cast([^]Vec3)(uintptr(mesh) + uintptr(mesh.vertexOffset))
+}
+
+// Get read only mesh triangles.
+GetMeshTriangles :: proc(mesh: ^MeshData) -> [^]MeshTriangle {
+	if mesh.triangleOffset == 0 {
+		return nil
+	}
+
+	return cast([^]MeshTriangle)(uintptr(mesh) + uintptr(mesh.triangleOffset))
+}
+
+// Get read only mesh materials. The count is equal to the triangle count.
+GetMeshMaterialIndices :: proc(mesh: ^MeshData) -> [^]u8 {
+	if mesh.materialOffset == 0 {
+		return nil
+	}
+
+	return cast([^]u8)(uintptr(mesh) + uintptr(mesh.materialOffset))
+}
+
+// Get read only mesh flags. The count is equal to the triangle count.
+GetMeshFlags :: proc(mesh: ^MeshData) -> [^]u8 {
+	if mesh.flagsOffset == 0 {
+		return nil
+	}
+
+	return cast([^]u8)(uintptr(mesh) + uintptr(mesh.flagsOffset))
+}
+
+// Get read only compressed heights. One uint16_t per grid point.
+GetHeightFieldCompressedHeights :: proc(hf: ^HeightFieldData) -> [^]u16 {
+	if hf.heightsOffset == 0 {
+		return nil
+	}
+
+	return cast([^]u16)(uintptr(hf) + uintptr(hf.heightsOffset))
+}
+
+// Get read only material indices. One uint8_t per cell.
+GetHeightFieldMaterialIndices :: proc(hf: ^HeightFieldData) -> [^]u8 {
+	if hf.materialOffset == 0 {
+		return nil
+	}
+
+	return cast([^]u8)(uintptr(hf) + uintptr(hf.materialOffset))
+}
+
+// Get read only triangle flags. One uint8_t per triangle.
+GetHeightFieldFlags :: proc(hf: ^HeightFieldData) -> [^]u8 {
+	if hf.flagsOffset == 0 {
+		return nil
+	}
+
+	return cast([^]u8)(uintptr(hf) + uintptr(hf.flagsOffset))
+}
+
+// Query callback.
+// unified: C calling convention (the library's API is upstream's C ABI)
+MeshQueryFcn :: #type proc "c" (a, b, c: Vec3, triangleIndex: i32, context_: rawptr) -> bool
+// unified end
+
+// This is used for computing 2D hulls in service of contact manifold simplification.
+// Placed here for testing. Internal.
+Point2D :: struct {
+	p:             Vec2, // 2D point
+	separation:    f32, // separation of the associated contact point
+	originalIndex: i32, // original index of the associated contact point
+}

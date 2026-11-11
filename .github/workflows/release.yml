@@ -1,0 +1,83 @@
+# A release: a tag `<upstream commit>-r<N>` (e.g. 336263320469-r1: the upstream commit this repo ports, a prefix of
+# UPSTREAM_COMMIT in tools/main.odin, and our revision of it) builds, tests and compares the library on the four
+# platforms, packages each with `./b3 package --tag` (release and debug libraries, include/, bindings/, LICENSE,
+# README.md), and publishes a GitHub release with the four zips and SHA256SUMS.
+#
+# The build jobs have `contents: read`; only the publish job, which runs no repository code but `gh`, can write.
+# Actions, runner images and Odin are pinned (see ci.yml).
+name: release
+
+on:
+  push:
+    tags: ["*-r*"]
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build / ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - { platform: linux-x64, os: ubuntu-24.04, b3: ./b3 }
+          - { platform: linux-arm64, os: ubuntu-24.04-arm, b3: ./b3 }
+          - { platform: windows-x64, os: windows-2025, b3: ./b3.cmd }
+          - { platform: macos-arm64, os: macos-15, b3: ./b3 }
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/odin
+      # No cache: a release builds upstream from scratch.
+      - name: test
+        run: ${{ matrix.b3 }} test
+      - name: compare with the original
+        run: ${{ matrix.b3 }} compare --tests
+      # Checks the tag first: its format, and that it names the upstream commit this repo ports.
+      - name: package
+        run: ${{ matrix.b3 }} package --tag "$GITHUB_REF_NAME"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-${{ matrix.platform }}
+          path: |
+            .out/package/*.zip
+            .out/package/*.sha256
+          if-no-files-found: error
+          include-hidden-files: true # .out/ is hidden, and a wildcard path skips hidden directories without this
+          retention-days: 14
+
+  publish:
+    name: release
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: dist
+          merge-multiple: true
+      - name: gh release create
+        run: |
+          cd dist
+          ls -la
+          [ "$(ls *.zip | wc -l)" = 4 ] || { echo "::error::expected 4 zips"; exit 1; }
+          cat *.sha256 | tr -d '\r' > SHA256SUMS   # LF only: macOS `shasum -c` rejects CRLF lines
+          sha256sum -c SHA256SUMS
+          commit=${TAG%-r*}
+          gh release create "$TAG" -R "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" \
+            --notes "Box3D at upstream erincatto/box3d@$commit, ported to Odin, as a shared library with upstream's C API (plus include/box3d/unified.h) and Odin bindings. Revision ${TAG##*-r}. Each zip has the release and debug libraries, include/, bindings/, LICENSE and README.md; SHA256SUMS checks them." \
+            *.zip SHA256SUMS
