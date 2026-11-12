@@ -74,7 +74,11 @@ does, in the same order, with the same names. Upstream's tests, ported 1:1 to `t
   `B3_ALLOC(T, n)` → `ALLOC(T, n)`, `B3_FREE(p, T, n)` → `FREE(p, T, n)`, `B3_GROW(...)` → `GROW(...)`.
 - `B3_INLINE` → plain proc, except in the math headers (`public_math_functions.odin`, `math_internal.odin`):
   `#force_inline`, since every C file inlines them and Odin's split modules otherwise can't;
-  `B3_FORCE_INLINE` → `#force_inline proc`. `B3_RESTRICT`/`restrict` → drop.
+  `B3_FORCE_INLINE` → `#force_inline proc`. `B3_RESTRICT`/`restrict` → drop. A release build is one LLVM module,
+  so LLVM inlines most other `static inline` helpers by itself; the few it leaves as calls where clang inlines them
+  (it doesn't get C's inline hint) are `#force_inline`: `SolvePointConstraint`, `AllocateManifolds`, `Bump`,
+  `SetBitGrow`. Check after a port: build the release library with `-debug` and list its out-of-line procs
+  (`llvm-pdbutil dump --symbols`) against the original's objects (`llvm-nm`).
 - Tracy macros (`b3TracyCZone*`, `b3TracyCFrame`) → drop. `b3Prefetch(addr)` → `Prefetch(addr)` (`platform.odin`,
   `intrinsics.prefetch_read_data`). `B3_CHECK_DEF(def)` → `CHECK_DEF(def)` (an assert, in `core.odin`).
 - `b3Array(T)` → `Array(T)` and the `b3Array_*` macros → procs of the same name taking `^Array(T)`

@@ -18,7 +18,7 @@ SetBit :: proc(bitSet: ^BitSet, bitIndex: u32) {
 	bitSet.bits[blockIndex] |= (u64(1) << (bitIndex % 64))
 }
 
-SetBitGrow :: proc(bitSet: ^BitSet, bitIndex: u32) {
+SetBitGrow :: #force_inline proc(bitSet: ^BitSet, bitIndex: u32) {
 	blockIndex := bitIndex / 64
 	if blockIndex >= bitSet.blockCount {
 		GrowBitSet(bitSet, blockIndex + 1)

@@ -241,7 +241,7 @@ World :: struct {
 	inUse:                        bool,
 }
 
-AllocateManifolds :: proc(world: ^World, count: i32) -> [^]Manifold {
+AllocateManifolds :: #force_inline proc(world: ^World, count: i32) -> [^]Manifold {
 	if count == 0 {
 		return nil
 	}

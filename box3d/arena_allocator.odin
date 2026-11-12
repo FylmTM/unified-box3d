@@ -54,7 +54,7 @@ Arena :: struct {
 // 16-byte alignment for SSE2 + typical struct alignment.
 ARENA_ALIGNMENT :: 16
 
-Bump :: proc(arena: ^Arena, size: i32) -> rawptr {
+Bump :: #force_inline proc(arena: ^Arena, size: i32) -> rawptr {
 	if size == 0 {
 		return nil
 	}

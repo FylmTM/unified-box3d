@@ -327,7 +327,15 @@ JointSim :: struct {
 }
 
 // K = [(1/m1 + 1/m2) * eye(2) - skew(r1) * invI1 * skew(r1) - skew(r2) * invI2 * skew(r2)]
-SolvePointConstraint :: proc(mA: f32, mB: f32, iA: Matrix3, iB: Matrix3, rA: Vec3, rB: Vec3, rhs: Vec3) -> Vec3 {
+SolvePointConstraint :: #force_inline proc(
+	mA: f32,
+	mB: f32,
+	iA: Matrix3,
+	iB: Matrix3,
+	rA: Vec3,
+	rB: Vec3,
+	rhs: Vec3,
+) -> Vec3 {
 	axy := rA.z * iA.cy.y - rA.y * iA.cz.y
 	axz := rA.z * iA.cy.z - rA.y * iA.cz.z
 	ay := Sub(MulSV(rA.x, iA.cz), MulSV(rA.z, iA.cx))
