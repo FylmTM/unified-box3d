@@ -1150,10 +1150,10 @@ run_layout_probe :: proc(api: ^C_Api, port: ^Port, structs, enums: []^Port_Decl)
 layout_file :: proc(probe: Probe, package_name: string, import_line: string, prefix: string) -> string {
 	b := strings.builder_make(context.temp_allocator)
 	fmt.sbprintfln(&b, "// %s", GEN_NOTE)
-	fmt.sbprintfln(
+	// No platform named: the file must be the same wherever `./b3 gen --check` runs.
+	fmt.sbprintln(
 		&b,
-		"// The public structs and enums against C's layout (include/box3d/*.h, measured by `./b3 gen`'s probe on %s;",
-		platform(),
+		"// The public structs and enums against C's layout (include/box3d/*.h, measured by `./b3 gen`'s probe;",
 	)
 	fmt.sbprintln(&b, "// the layouts are the same on every 64-bit target we build).")
 	fmt.sbprintfln(&b, "package %s\n\n%s\n", package_name, import_line)

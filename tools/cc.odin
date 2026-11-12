@@ -50,7 +50,20 @@ cc_flags :: proc(c: Cc) -> []string {
 		cpu :: "-mcpu=generic"
 	}
 	if c.msvc {
-		return strs("/nologo", "/MT", "/O2", "/DNDEBUG", "/std:c17", "/clang:-ffp-contract=off", "/clang:" + cpu)
+		// /FIintrin.h: clang-cl before 21 declares _xend in intrin.h after including immintrin.h, which defines it;
+		// upstream's wide8.c includes immintrin.h first, and when intrin.h gets pulled in from inside it, the plain
+		// declaration comes before the definition and clang rejects the pair. Including intrin.h first keeps its
+		// usual order.
+		return strs(
+			"/nologo",
+			"/MT",
+			"/O2",
+			"/DNDEBUG",
+			"/std:c17",
+			"/clang:-ffp-contract=off",
+			"/clang:" + cpu,
+			"/FIintrin.h",
+		)
 	}
 	flags := strs("-O2", "-DNDEBUG", "-std=gnu17", "-fvisibility=hidden", "-ffp-contract=off", cpu)
 	when ODIN_OS == .Darwin {
