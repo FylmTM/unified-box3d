@@ -377,21 +377,38 @@ compare_traces :: proc(c: Cc, libs: []Lib, scene: string) -> bool {
 		exes[i] = build_program(c, lib, "compare", strs(src), nil) or_return
 	}
 
-	// The reference twice (run to run) and with 4 workers; ours with 1 and 4.
+	// The reference twice (run to run) and with 4 workers; ours with 1 and 4. Both also on the 4-wide SIMD path
+	// (`w4`, which is the only one where the CPU has no AVX2): the widths must give the same results.
 	Spec :: struct {
 		lib:     int,
 		workers: string,
+		width4:  bool,
 		label:   string,
 	}
 	specs := make([dynamic]Spec, context.temp_allocator)
-	append(&specs, Spec{0, "1", "original"}, Spec{0, "1", "original-again"}, Spec{0, "4", "original-4w"})
+	append(
+		&specs,
+		Spec{0, "1", false, "original"},
+		Spec{0, "1", false, "original-again"},
+		Spec{0, "4", false, "original-4w"},
+		Spec{0, "1", true, "original-w4"},
+	)
 	if len(libs) > 1 {
-		append(&specs, Spec{1, "1", "ours"}, Spec{1, "4", "ours-4w"})
+		append(
+			&specs,
+			Spec{1, "1", false, "ours"},
+			Spec{1, "4", false, "ours-4w"},
+			Spec{1, "1", true, "ours-w4"},
+			Spec{1, "4", true, "ours-w4-4w"},
+		)
 	}
 	runs := make([]Run, len(specs), context.temp_allocator)
 	for s, i in specs {
 		cmd := make([dynamic]string, context.temp_allocator)
 		append(&cmd, exes[s.lib], s.workers)
+		if s.width4 {
+			append(&cmd, "--w4")
+		}
 		if scene != "" {
 			append(&cmd, scene)
 		}

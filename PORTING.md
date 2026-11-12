@@ -113,9 +113,19 @@ does, in the same order, with the same names. Upstream's tests, ported 1:1 to `t
 ## SIMD
 
 Upstream has SSE2, NEON and scalar 4-wide kernels (`simd_sse2.h`, `simd_neon.h`, `simd_scalar.h`) and an 8-wide AVX2
-one. The port has one 4-wide implementation on `#simd[4]f32` (`core:simd`), with SSE2's semantics as the reference
-(e.g. `_mm_min_ps` returns the second operand when either is NaN). The AVX2 path is not ported (`// unified:`):
-we build every platform at width 4 so x64 and arm64 compute the same results.
+one. The port has the 4-wide kernels on `#simd[4]f32` (`core:simd`), with SSE2's semantics as the reference (e.g.
+`_mm_min_ps` returns the second operand when either is NaN), on every platform, and the 8-wide AVX2 ones on
+`#simd[8]f32` with the same semantics per lane, on x64 (`SIMD_HAS_WIDTH_8`), chosen at run time when the CPU has AVX2
+(`DetectSIMDWidth`), as upstream. A lane computes the same at either width, so arm64, x64 and x64 with AVX2 give the
+same results: upstream's `SIMDWidthTest` checks it, and `./b3 compare` runs both widths of both libraries.
+
+The wide code is upstream's `.inl` files compiled twice (`wide4.c`, `wide8.c` with AVX2 enabled). The port has the
+4-wide instantiations (`contact_solver_wide.odin`, `convex_manifold_wide.odin`), ported by hand with their
+`B3_SIMD_WIDTH == 8` branches as `when SIMD_WIDTH == 8`; `./b3 gen` writes the 8-wide ones from them
+(`*_wide8.odin`, `tools/gen_wide.odin`: W4 names become W8, `SIMD_WIDTH` is 8, every proc gets
+`@(enable_target_feature = "avx2")`), so they are never edited and can't drift. Everything that takes or returns an
+8-wide vector is compiled with AVX2 (the W8 kernels in `simd.odin` too): a call between AVX2 and non-AVX2 code passes
+a 256-bit vector differently on each side.
 
 ## Customizations
 
@@ -181,8 +191,9 @@ headers are package-public). `test_macros.odin` has the harness:
 
 - `QSORT(A: [^]$T, n: i32, $LESS: proc(a, b: T) -> bool)` (`qsort.odin`).
 - `rapidhash(key: rawptr, len: int) -> u64`.
-- `simd_wide.odin`: `SIMD_WIDTH :: 4`, `FloatW`, `Vec3W` and every `b3*W` macro as the 4-wide version; wide code
-  (contact solver, manifolds) uses these.
+- `simd_wide.odin`: `FloatW`, `Vec3W` and every `b3*W` macro as aliases of the 4-wide version, for the 4-wide
+  instantiations; `SIMD_WIDTH` and `WIDE_ALIGNMENT` are file-private constants of each (an alias can't be
+  file-private), and the generated 8-wide files use the W8 names directly.
 - `ThreadFunction` is in `timer.odin`.
 - `FLT_EPSILON`, `FLT_MIN`, `FLT_MAX` are typed `f32` constants (`public_math_functions.odin`); so are `PI` and
   the other float `#define`s (`PI :: f32(...)`), which keeps constant folding in f32 like C.

@@ -1237,8 +1237,13 @@ ComputeSeparatingAxisAtWidth :: proc(
 	earlyReturn: bool,
 	simdWidth: i32,
 ) -> AxisQuery {
-	// unified: not ported: the width-8 dispatch (B3_SIMD_HAS_WIDTH_8, AVX2); every platform runs width 4
-	_ = simdWidth
+	when SIMD_HAS_WIDTH_8 {
+		if simdWidth == 8 {
+			return ComputeSeparatingAxisW8(hullA, hullB, xfB, earlyReturn)
+		}
+	} else {
+		_ = simdWidth
+	}
 
 	return ComputeSeparatingAxisW4(hullA, hullB, xfB, earlyReturn)
 }

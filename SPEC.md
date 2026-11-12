@@ -33,8 +33,9 @@ Ours (`include/box3d/unified.h`):
 Every change from upstream is marked `// unified:` in the code (`grep -rn "// unified:" box3d`).
 
 For determinism and the language:
-- One SIMD path, 4-wide on `#simd[4]f32` with SSE2's semantics; the AVX2 (8-wide) path and its runtime dispatch are
-  not ported, so x64 and arm64 compute the same results. No fused multiply-add.
+- SIMD on `#simd[4]f32` and, on x64 with AVX2 (chosen at run time, as upstream), `#simd[8]f32`, both with SSE2's
+  semantics per lane, so every platform and width computes the same results; the 8-wide instantiations are generated
+  from the 4-wide ones (`./b3 gen`). No fused multiply-add.
 - Sensor overlaps are sorted with the ported `QSORT` instead of libc `qsort` (whose order of equal keys, and so
   which duplicate is kept, depends on the platform's libc).
 - Verstable hash maps are Odin maps (lookup only, never iterated) or small chained maps keyed by content hashes.

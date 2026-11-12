@@ -1,4 +1,4 @@
-// Ported from box3d src/simd.c, src/simd.h and src/simd_sse2.h at 3362633 (PORTING.md).
+// Ported from box3d src/simd.c, src/simd.h, src/simd_sse2.h and src/simd_avx2.h at 3362633 (PORTING.md).
 // SPDX-FileCopyrightText: 2026 Erin Catto
 // SPDX-License-Identifier: MIT
 
@@ -11,8 +11,9 @@ import "core:simd"
 
 // unified: one 4-wide implementation on #simd[4]f32 with SSE2's semantics (simd_sse2.h): comparisons give
 // all-ones lane masks, logic is bitwise, min/max return the second operand unless the first compares strictly
-// less/greater (so NaN and -0/+0 give the second operand). simd_neon.h and simd_scalar.h are not ported.
-// unified: not ported: the 8-wide AVX2 path; every platform runs width 4 so x64 and arm64 compute the same results
+// less/greater (so NaN and -0/+0 give the second operand). simd_neon.h and simd_scalar.h are not ported. The
+// 8-wide AVX2 kernels (simd_avx2.h) have the same semantics per lane: width 4 and width 8 give the same results
+// (tests/upstream/test_determinism.odin, SIMDWidthTest), so arm64 and x64 with or without AVX2 compute the same.
 
 // ---- simd_sse2.h ----
 
@@ -194,6 +195,253 @@ TransposeW4 :: #force_inline proc "contextless" (r0, r1, r2, r3: FloatW4, c0, c1
 	c1^ = simd.shuffle(t0, t1, 2, 6, 3, 7)
 	c2^ = simd.shuffle(t2, t3, 0, 4, 1, 5)
 	c3^ = simd.shuffle(t2, t3, 2, 6, 3, 7)
+}
+
+// B3_SIMD_HAS_WIDTH_8 (core.h): x64 has the 8-wide AVX2 instantiations, chosen at run time.
+SIMD_HAS_WIDTH_8 :: ODIN_ARCH == .amd64
+
+// ---- simd_avx2.h ----
+
+when SIMD_HAS_WIDTH_8 {
+	// unified: the 8-wide kernels on #simd[8]f32 with AVX2's semantics, which per lane are SSE2's above (so a lane
+	// computes the same at either width). x64 only, and compiled with AVX2 like everything that takes or returns an
+	// 8-wide vector (the wide8 instantiations), so they agree on how one is passed; they run only on a CPU that has AVX2
+	// (DetectSIMDWidth).
+
+	// wide float holds 8 numbers
+	FloatW8 :: #simd[8]f32
+
+	@(private = "file")
+	UIntW8 :: #simd[8]u32
+
+	@(private = "file")
+	IntW8 :: #simd[8]i32
+
+	@(private = "file")
+	SIGN_MASK_W8 :: UIntW8 {
+		0x80000000,
+		0x80000000,
+		0x80000000,
+		0x80000000,
+		0x80000000,
+		0x80000000,
+		0x80000000,
+		0x80000000,
+	}
+
+	// _mm256_movemask_ps: the sign bit of each lane
+	@(private = "file", enable_target_feature = "avx2")
+	MoveMask8 :: #force_inline proc "contextless" (a: FloatW8) -> i32 {
+		return i32(transmute(u8)simd.extract_msbs(transmute(UIntW8)a))
+	}
+
+	// _mm256_min_ps: a < b ? a : b per lane
+	@(private = "file", enable_target_feature = "avx2")
+	MinPs8 :: #force_inline proc "contextless" (a, b: FloatW8) -> FloatW8 {
+		return simd.select(simd.lanes_lt(a, b), a, b)
+	}
+
+	// _mm256_max_ps: a > b ? a : b per lane
+	@(private = "file", enable_target_feature = "avx2")
+	MaxPs8 :: #force_inline proc "contextless" (a, b: FloatW8) -> FloatW8 {
+		return simd.select(simd.lanes_gt(a, b), a, b)
+	}
+
+	@(enable_target_feature = "avx2")
+	ZeroW8 :: #force_inline proc "contextless" () -> FloatW8 {
+		return FloatW8{}
+	}
+
+	@(enable_target_feature = "avx2")
+	SplatW8 :: #force_inline proc "contextless" (scalar: f32) -> FloatW8 {
+		return FloatW8{scalar, scalar, scalar, scalar, scalar, scalar, scalar, scalar}
+	}
+
+	@(enable_target_feature = "avx2")
+	SetW8 :: #force_inline proc "contextless" (a, b, c, d, e, f, g, h: f32) -> FloatW8 {
+		return FloatW8{a, b, c, d, e, f, g, h}
+	}
+
+	@(enable_target_feature = "avx2")
+	LoadW8 :: #force_inline proc "contextless" (data: [^]f32) -> FloatW8 {
+		return intrinsics.unaligned_load((^FloatW8)(data))
+	}
+
+	@(enable_target_feature = "avx2")
+	StoreW8 :: #force_inline proc "contextless" (data: [^]f32, a: FloatW8) {
+		intrinsics.unaligned_store((^FloatW8)(data), a)
+	}
+
+	@(enable_target_feature = "avx2")
+	NegW8 :: #force_inline proc "contextless" (a: FloatW8) -> FloatW8 {
+		// Create a mask with the sign bit set for each element.
+		// XOR the input with the mask to negate each element.
+		return transmute(FloatW8)(transmute(UIntW8)a ~ SIGN_MASK_W8)
+	}
+
+	@(enable_target_feature = "avx2")
+	AbsW8 :: #force_inline proc "contextless" (a: FloatW8) -> FloatW8 {
+		return transmute(FloatW8)(transmute(UIntW8)a &~ SIGN_MASK_W8)
+	}
+
+	@(enable_target_feature = "avx2")
+	AddW8 :: #force_inline proc "contextless" (a, b: FloatW8) -> FloatW8 {
+		return a + b
+	}
+
+	@(enable_target_feature = "avx2")
+	SubW8 :: #force_inline proc "contextless" (a, b: FloatW8) -> FloatW8 {
+		return a - b
+	}
+
+	@(enable_target_feature = "avx2")
+	MulW8 :: #force_inline proc "contextless" (a, b: FloatW8) -> FloatW8 {
+		return a * b
+	}
+
+	@(enable_target_feature = "avx2")
+	DivW8 :: #force_inline proc "contextless" (a, b: FloatW8) -> FloatW8 {
+		return a / b
+	}
+
+	@(enable_target_feature = "avx2")
+	SqrtW8 :: #force_inline proc "contextless" (a: FloatW8) -> FloatW8 {
+		return simd.sqrt(a)
+	}
+
+	// a + b * c
+	@(enable_target_feature = "avx2")
+	MulAddW8 :: #force_inline proc "contextless" (a, b, c: FloatW8) -> FloatW8 {
+		return a + (b * c)
+	}
+
+	@(enable_target_feature = "avx2")
+	MinW8 :: #force_inline proc "contextless" (a, b: FloatW8) -> FloatW8 {
+		return MinPs8(a, b)
+	}
+
+	@(enable_target_feature = "avx2")
+	MaxW8 :: #force_inline proc "contextless" (a, b: FloatW8) -> FloatW8 {
+		return MaxPs8(a, b)
+	}
+
+	@(enable_target_feature = "avx2")
+	AndW8 :: #force_inline proc "contextless" (a, b: FloatW8) -> FloatW8 {
+		return transmute(FloatW8)(transmute(UIntW8)a & transmute(UIntW8)b)
+	}
+
+	@(enable_target_feature = "avx2")
+	OrW8 :: #force_inline proc "contextless" (a, b: FloatW8) -> FloatW8 {
+		return transmute(FloatW8)(transmute(UIntW8)a | transmute(UIntW8)b)
+	}
+
+	// a & ~b
+	@(enable_target_feature = "avx2")
+	AndNotW8 :: #force_inline proc "contextless" (a, b: FloatW8) -> FloatW8 {
+		return transmute(FloatW8)(transmute(UIntW8)a &~ transmute(UIntW8)b)
+	}
+
+	// This is used to optimize selection of contact softness.
+	@(enable_target_feature = "avx2")
+	SoftMaskW8 :: #force_inline proc "contextless" (indexA: [^]i32, indexB: [^]i32) -> FloatW8 {
+		zero := IntW8{}
+		a := simd.lanes_eq(intrinsics.unaligned_load((^IntW8)(indexA)), zero)
+		b := simd.lanes_eq(intrinsics.unaligned_load((^IntW8)(indexB)), zero)
+		return transmute(FloatW8)(a | b)
+	}
+
+	@(enable_target_feature = "avx2")
+	GreaterThanW8 :: #force_inline proc "contextless" (a, b: FloatW8) -> FloatW8 {
+		return transmute(FloatW8)simd.lanes_gt(a, b)
+	}
+
+	@(enable_target_feature = "avx2")
+	LessThanW8 :: #force_inline proc "contextless" (a, b: FloatW8) -> FloatW8 {
+		return transmute(FloatW8)simd.lanes_lt(a, b)
+	}
+
+	@(enable_target_feature = "avx2")
+	EqualsW8 :: #force_inline proc "contextless" (a, b: FloatW8) -> FloatW8 {
+		return transmute(FloatW8)simd.lanes_eq(a, b)
+	}
+
+	@(enable_target_feature = "avx2")
+	AllZeroW8 :: #force_inline proc "contextless" (a: FloatW8) -> bool {
+		// Compare each element with zero
+		zero := FloatW8{}
+		cmp := transmute(FloatW8)simd.lanes_eq(a, zero)
+
+		// Create a mask from the comparison results
+		mask := MoveMask8(cmp)
+
+		// If all elements are zero, the mask will be 0xFF (11111111 in binary)
+		return mask == 0xFF
+	}
+
+	@(enable_target_feature = "avx2")
+	AnyTrueW8 :: #force_inline proc "contextless" (mask: FloatW8) -> bool {
+		return MoveMask8(mask) != 0
+	}
+
+	// Component-wise returns mask ? b : a
+	@(enable_target_feature = "avx2")
+	BlendW8 :: #force_inline proc "contextless" (a, b, mask: FloatW8) -> FloatW8 {
+		m := transmute(UIntW8)mask
+		return transmute(FloatW8)((m & transmute(UIntW8)b) | (transmute(UIntW8)a &~ m))
+	}
+
+	// Replace the low bitCount mantissa bits of each lane with baseIndex + lane. The value must be
+	// positive so the embedded index sorts with the value, and ties fall to the lower index.
+	@(enable_target_feature = "avx2")
+	EmbedIndexW8 :: #force_inline proc "contextless" (value: FloatW8, baseIndex: i32, bitCount: i32) -> FloatW8 {
+		mask := (i32(1) << u32(bitCount)) - 1
+		b := baseIndex
+		index := IntW8{b, b, b, b, b, b, b, b} + IntW8{0, 1, 2, 3, 4, 5, 6, 7}
+		clearLow := transmute(UIntW8)IntW8{~mask, ~mask, ~mask, ~mask, ~mask, ~mask, ~mask, ~mask}
+		return transmute(FloatW8)((transmute(UIntW8)value & clearLow) | transmute(UIntW8)index)
+	}
+
+	// Recovers the index embedded by b3EmbedIndexW8 from the lane holding the minimum.
+	@(enable_target_feature = "avx2")
+	MinIndexW8 :: #force_inline proc "contextless" (a: FloatW8, bitCount: i32) -> i32 {
+		min := MinPs(simd.shuffle(a, a, 0, 1, 2, 3), simd.shuffle(a, a, 4, 5, 6, 7))
+		min = MinPs(simd.swizzle(min, 1, 0, 3, 2), min)
+		min = MinPs(simd.swizzle(min, 2, 3, 0, 1), min)
+		return transmute(i32)simd.extract(min, 0) & ((i32(1) << u32(bitCount)) - 1)
+	}
+
+	// unified: _mm256_unpacklo/hi_ps, _mm256_shuffle_ps and _mm256_permute2f128_ps as simd.shuffle lane lists
+	@(enable_target_feature = "avx2")
+	TransposeW8 :: #force_inline proc "contextless" (
+		r0, r1, r2, r3, r4, r5, r6, r7: FloatW8,
+		c0, c1, c2, c3, c4, c5, c6, c7: ^FloatW8,
+	) {
+		t0 := simd.shuffle(r0, r1, 0, 8, 1, 9, 4, 12, 5, 13)
+		t1 := simd.shuffle(r0, r1, 2, 10, 3, 11, 6, 14, 7, 15)
+		t2 := simd.shuffle(r2, r3, 0, 8, 1, 9, 4, 12, 5, 13)
+		t3 := simd.shuffle(r2, r3, 2, 10, 3, 11, 6, 14, 7, 15)
+		t4 := simd.shuffle(r4, r5, 0, 8, 1, 9, 4, 12, 5, 13)
+		t5 := simd.shuffle(r4, r5, 2, 10, 3, 11, 6, 14, 7, 15)
+		t6 := simd.shuffle(r6, r7, 0, 8, 1, 9, 4, 12, 5, 13)
+		t7 := simd.shuffle(r6, r7, 2, 10, 3, 11, 6, 14, 7, 15)
+		tt0 := simd.shuffle(t0, t2, 0, 1, 8, 9, 4, 5, 12, 13)
+		tt1 := simd.shuffle(t0, t2, 2, 3, 10, 11, 6, 7, 14, 15)
+		tt2 := simd.shuffle(t1, t3, 0, 1, 8, 9, 4, 5, 12, 13)
+		tt3 := simd.shuffle(t1, t3, 2, 3, 10, 11, 6, 7, 14, 15)
+		tt4 := simd.shuffle(t4, t6, 0, 1, 8, 9, 4, 5, 12, 13)
+		tt5 := simd.shuffle(t4, t6, 2, 3, 10, 11, 6, 7, 14, 15)
+		tt6 := simd.shuffle(t5, t7, 0, 1, 8, 9, 4, 5, 12, 13)
+		tt7 := simd.shuffle(t5, t7, 2, 3, 10, 11, 6, 7, 14, 15)
+
+		c0^ = simd.shuffle(tt0, tt4, 0, 1, 2, 3, 8, 9, 10, 11)
+		c1^ = simd.shuffle(tt1, tt5, 0, 1, 2, 3, 8, 9, 10, 11)
+		c2^ = simd.shuffle(tt2, tt6, 0, 1, 2, 3, 8, 9, 10, 11)
+		c3^ = simd.shuffle(tt3, tt7, 0, 1, 2, 3, 8, 9, 10, 11)
+		c4^ = simd.shuffle(tt0, tt4, 4, 5, 6, 7, 12, 13, 14, 15)
+		c5^ = simd.shuffle(tt1, tt5, 4, 5, 6, 7, 12, 13, 14, 15)
+		c6^ = simd.shuffle(tt2, tt6, 4, 5, 6, 7, 12, 13, 14, 15)
+		c7^ = simd.shuffle(tt3, tt7, 4, 5, 6, 7, 12, 13, 14, 15)
+	}
 }
 
 // The following are SIMD definitions for operations where a wide register is
@@ -428,6 +676,79 @@ CrossW4 :: #force_inline proc "contextless" (a, b: Vec3W4) -> Vec3W4 {
 	return c
 }
 
+when SIMD_HAS_WIDTH_8 {
+	// Wide vec3, 8 lanes (B3_SIMD_AVX2)
+	Vec3W8 :: struct {
+		X, Y, Z: FloatW8,
+	}
+
+	@(enable_target_feature = "avx2")
+	LoadVW8 :: #force_inline proc "contextless" (x, y, z: [^]f32) -> Vec3W8 {
+		return Vec3W8{LoadW8(x), LoadW8(y), LoadW8(z)}
+	}
+
+	@(enable_target_feature = "avx2")
+	StoreVW8 :: #force_inline proc "contextless" (x, y, z: [^]f32, v: Vec3W8) {
+		StoreW8(x, v.X)
+		StoreW8(y, v.Y)
+		StoreW8(z, v.Z)
+	}
+
+	@(enable_target_feature = "avx2")
+	SplatVW8 :: #force_inline proc "contextless" (v: Vec3) -> Vec3W8 {
+		return Vec3W8{SplatW8(v.x), SplatW8(v.y), SplatW8(v.z)}
+	}
+
+	@(enable_target_feature = "avx2")
+	NegVW8 :: #force_inline proc "contextless" (a: Vec3W8) -> Vec3W8 {
+		return Vec3W8{NegW8(a.X), NegW8(a.Y), NegW8(a.Z)}
+	}
+
+	// s * a
+	@(enable_target_feature = "avx2")
+	MulSVW8 :: #force_inline proc "contextless" (s: FloatW8, a: Vec3W8) -> Vec3W8 {
+		return Vec3W8{MulW8(s, a.X), MulW8(s, a.Y), MulW8(s, a.Z)}
+	}
+
+	// a - s * b
+	@(enable_target_feature = "avx2")
+	MulSubSVW8 :: #force_inline proc "contextless" (a: Vec3W8, s: FloatW8, b: Vec3W8) -> Vec3W8 {
+		return Vec3W8{SubW8(a.X, MulW8(s, b.X)), SubW8(a.Y, MulW8(s, b.Y)), SubW8(a.Z, MulW8(s, b.Z))}
+	}
+
+	// a + s * b
+	@(enable_target_feature = "avx2")
+	MulAddSVW8 :: #force_inline proc "contextless" (a: Vec3W8, s: FloatW8, b: Vec3W8) -> Vec3W8 {
+		return Vec3W8{AddW8(a.X, MulW8(s, b.X)), AddW8(a.Y, MulW8(s, b.Y)), AddW8(a.Z, MulW8(s, b.Z))}
+	}
+
+	// a - b
+	@(enable_target_feature = "avx2")
+	SubVW8 :: #force_inline proc "contextless" (a, b: Vec3W8) -> Vec3W8 {
+		return Vec3W8{SubW8(a.X, b.X), SubW8(a.Y, b.Y), SubW8(a.Z, b.Z)}
+	}
+
+	// a + b
+	@(enable_target_feature = "avx2")
+	AddVW8 :: #force_inline proc "contextless" (a, b: Vec3W8) -> Vec3W8 {
+		return Vec3W8{AddW8(a.X, b.X), AddW8(a.Y, b.Y), AddW8(a.Z, b.Z)}
+	}
+
+	@(enable_target_feature = "avx2")
+	DotW8 :: #force_inline proc "contextless" (a, b: Vec3W8) -> FloatW8 {
+		return AddW8(AddW8(MulW8(a.X, b.X), MulW8(a.Y, b.Y)), MulW8(a.Z, b.Z))
+	}
+
+	@(enable_target_feature = "avx2")
+	CrossW8 :: #force_inline proc "contextless" (a, b: Vec3W8) -> Vec3W8 {
+		c: Vec3W8
+		c.X = SubW8(MulW8(a.Y, b.Z), MulW8(a.Z, b.Y))
+		c.Y = SubW8(MulW8(a.Z, b.X), MulW8(a.X, b.Z))
+		c.Z = SubW8(MulW8(a.X, b.Y), MulW8(a.Y, b.X))
+		return c
+	}
+}
+
 TestBoundsOverlap :: proc "contextless" (nodeMin1, nodeMax1, nodeMin2, nodeMax2: V32) -> bool {
 	separation := MaxV(SubV(nodeMin2, nodeMax1), SubV(nodeMin1, nodeMax2))
 	return AllLessEq3V(separation, zeroV)
@@ -461,11 +782,50 @@ UnionV :: #force_inline proc "contextless" (a, b: AABB) -> AABB {
 @(private = "file")
 simdWidth: AtomicInt
 
-// unified: not ported: b3CpuId, b3GetExtendedControlRegister and b3HasAVX2 (the AVX2 runtime dispatch)
+// This code enables runtime dispatch to AVX2.
+// Inspired by https://github.com/simdjson/simdjson/blob/master/src/internal/isadetection.h
+when ODIN_ARCH == .amd64 {
+	@(private = "file")
+	CpuId :: proc "contextless" (leaf: u32, subLeaf: u32) -> (registers: [4]u32) {
+		registers[0], registers[1], registers[2], registers[3] = intrinsics.x86_cpuid(leaf, subLeaf)
+		return
+	}
+
+	@(private = "file")
+	GetExtendedControlRegister :: proc "contextless" () -> u64 {
+		low, high := intrinsics.x86_xgetbv(0)
+		return (u64(high) << 32) | u64(low)
+	}
+
+	@(private = "file")
+	HasAVX2 :: proc "contextless" () -> bool {
+		registers := CpuId(0, 0)
+		if registers[0] < 7 {
+			return false
+		}
+
+		registers = CpuId(1, 0)
+		osxsaveAndAvx: u32 = (1 << 27) | (1 << 28)
+		if (registers[2] & osxsaveAndAvx) != osxsaveAndAvx {
+			return false
+		}
+
+		if (GetExtendedControlRegister() & 6) != 6 {
+			return false
+		}
+
+		registers = CpuId(7, 0)
+		return (registers[1] & (1 << 5)) != 0
+	}
+}
 
 @(private = "file")
 DetectSIMDWidth :: proc "contextless" () -> i32 {
-	return 4
+	when ODIN_ARCH == .amd64 {
+		return HasAVX2() ? 8 : 4
+	} else {
+		return 4
+	}
 }
 
 GetSIMDWidth :: proc "contextless" () -> i32 {

@@ -1,6 +1,6 @@
 // `./b3 fmt`: odinfmt (odinfmt.json) over the hand-written Odin code. The generated files (export/, bindings/,
-// tests/bindings/layout.odin) are left as `./b3 gen` writes them. odinfmt is ODINFMT, or odinfmt on PATH; without
-// it the command says so and does nothing.
+// tests/bindings/layout.odin, box3d/*_wide8.odin) are left as `./b3 gen` writes them. odinfmt is ODINFMT, or
+// odinfmt on PATH; without it the command says so and does nothing.
 package tools
 
 import "base:runtime"
@@ -23,7 +23,11 @@ register_fmt :: proc "contextless" () {
 }
 
 FMT_DIRS := [?]string{"box3d", "tools", "bench", "tests/upstream", "tests/port", "tests/bindings"}
-FMT_GENERATED := [?]string{"tests/bindings/layout.odin"}
+FMT_GENERATED := [?]string {
+	"tests/bindings/layout.odin",
+	"box3d/contact_solver_wide8.odin",
+	"box3d/convex_manifold_wide8.odin",
+}
 
 cmd_fmt :: proc(args: []string) -> bool {
 	check := false

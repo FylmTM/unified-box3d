@@ -5,10 +5,13 @@ package box3d
 
 import "base:intrinsics"
 
-// unified: not ported: wide8.c (the AVX2 instantiation); every platform runs width 4
+// This is the wide4.c instantiation (B3_SIMD_WIDTH 4): B3_WIDE(name) is nameW4. `./b3 gen` writes the wide8.c one
+// (convex_manifold_wide8.odin, B3_SIMD_WIDTH 8, AVX2) from this file.
 
-// unified: the .inl is instantiated once, at width 4 (wide4.c): B3_WIDE(name) is nameW4 and the b3*W names are
-// simd_wide.odin's. The B3_SIMD_NONE scalar branch is kept behind this switch (off, as on every SIMD platform).
+// unified: B3_SIMD_WIDTH, file-private (simd_wide.odin). The B3_SIMD_NONE scalar branch is kept behind a switch
+// (off, as on every SIMD platform).
+@(private = "file")
+SIMD_WIDTH :: 4
 @(private = "file")
 SIMD_NONE :: false
 // unified end

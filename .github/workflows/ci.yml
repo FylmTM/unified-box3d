@@ -1,6 +1,6 @@
 # Every pull request and push to main, on the four platforms the library ships for: build the shared library, run the test
 # suites, and compare it with the original (`./b3 compare --tests`: the comparison scenes' traces bit for bit with 1
-# and 4 workers, and upstream's public-API C tests against both libraries).
+# and 4 workers and both SIMD widths, and upstream's public-API C tests against both libraries).
 #
 # Security: `contents: read`; actions pinned by commit, runner images by version (an image update can change
 # compilers, so it is a deliberate bump), Odin by its SHA-256 in pins.cfg (.github/actions/odin). Upstream Box3D
@@ -49,6 +49,11 @@ jobs:
             .out/upstream/src.stamp
             .out/upstream/lib
           key: upstream-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/main.odin', 'tools/upstream.odin', 'tools/cc.odin') }}
+      # The generated files (export/, bindings/, the layout asserts, the 8-wide SIMD instantiations) match what
+      # ./b3 gen writes from their sources. Text, the same on every platform: one is enough.
+      - name: generated files up to date
+        if: matrix.platform == 'linux-x64'
+        run: ${{ matrix.b3 }} gen --check
       - name: build
         run: ${{ matrix.b3 }} build
       - name: test

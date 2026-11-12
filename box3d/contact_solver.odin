@@ -996,71 +996,170 @@ StoreImpulses_Overflow :: proc(context_: ^StepContext) {
 	StoreImpulses_Mesh(block, context_, 0)
 }
 
-// unified: not ported: the width-8 dispatch (B3_SIMD_HAS_WIDTH_8, AVX2) in the procs below; every platform runs
-// width 4
-
 PrepareContacts_Convex :: proc(block: SolverBlock, context_: ^StepContext) {
+	when SIMD_HAS_WIDTH_8 {
+		if context_.world.simdWidth == 8 {
+			PrepareContacts_ConvexW8(block, context_)
+			return
+		}
+	}
+
 	PrepareContacts_ConvexW4(block, context_)
 }
 
 WarmStartContacts_Convex :: proc(block: SolverBlock, context_: ^StepContext) {
+	when SIMD_HAS_WIDTH_8 {
+		if context_.world.simdWidth == 8 {
+			WarmStartContacts_ConvexW8(block, context_)
+			return
+		}
+	}
+
 	WarmStartContacts_ConvexW4(block, context_)
 }
 
 PushContacts_Convex :: proc(block: SolverBlock, context_: ^StepContext) {
+	when SIMD_HAS_WIDTH_8 {
+		if context_.world.simdWidth == 8 {
+			PushContacts_ConvexW8(block, context_)
+			return
+		}
+	}
+
 	PushContacts_ConvexW4(block, context_)
 }
 
 SolveContacts_Convex :: proc(block: SolverBlock, context_: ^StepContext) {
+	when SIMD_HAS_WIDTH_8 {
+		if context_.world.simdWidth == 8 {
+			SolveContacts_ConvexW8(block, context_)
+			return
+		}
+	}
+
 	SolveContacts_ConvexW4(block, context_)
 }
 
 ApplyRestitution_Convex :: proc(block: SolverBlock, context_: ^StepContext) {
+	when SIMD_HAS_WIDTH_8 {
+		if context_.world.simdWidth == 8 {
+			ApplyRestitution_ConvexW8(block, context_)
+			return
+		}
+	}
+
 	ApplyRestitution_ConvexW4(block, context_)
 }
 
 StoreImpulses_Convex :: proc(block: SolverBlock, context_: ^StepContext, workerIndex: i32) {
+	when SIMD_HAS_WIDTH_8 {
+		if context_.world.simdWidth == 8 {
+			StoreImpulses_ConvexW8(block, context_, workerIndex)
+			return
+		}
+	}
+
 	StoreImpulses_ConvexW4(block, context_, workerIndex)
 }
 
 GetWideContactConstraintByteCount :: proc(simdWidth: i32) -> i32 {
-	_ = simdWidth
+	when SIMD_HAS_WIDTH_8 {
+		if simdWidth == 8 {
+			return GetWideContactConstraintByteCountW8()
+		}
+	} else {
+		_ = simdWidth
+	}
 
 	return GetWideContactConstraintByteCountW4()
 }
 
 PrepareContacts_MeshWide :: proc(block: SolverBlock, context_: ^StepContext) {
+	when SIMD_HAS_WIDTH_8 {
+		if context_.world.simdWidth == 8 {
+			PrepareContacts_MeshWideW8(block, context_)
+			return
+		}
+	}
+
 	PrepareContacts_MeshWideW4(block, context_)
 }
 
 WarmStartContacts_MeshWide :: proc(block: SolverBlock, context_: ^StepContext) {
+	when SIMD_HAS_WIDTH_8 {
+		if context_.world.simdWidth == 8 {
+			WarmStartContacts_MeshWideW8(block, context_)
+			return
+		}
+	}
+
 	WarmStartContacts_MeshWideW4(block, context_)
 }
 
 PushContacts_MeshWide :: proc(block: SolverBlock, context_: ^StepContext) {
+	when SIMD_HAS_WIDTH_8 {
+		if context_.world.simdWidth == 8 {
+			PushContacts_MeshWideW8(block, context_)
+			return
+		}
+	}
+
 	PushContacts_MeshWideW4(block, context_)
 }
 
 SolveContacts_MeshWide :: proc(block: SolverBlock, context_: ^StepContext) {
+	when SIMD_HAS_WIDTH_8 {
+		if context_.world.simdWidth == 8 {
+			SolveContacts_MeshWideW8(block, context_)
+			return
+		}
+	}
+
 	SolveContacts_MeshWideW4(block, context_)
 }
 
 ApplyRestitution_MeshWide :: proc(block: SolverBlock, context_: ^StepContext) {
+	when SIMD_HAS_WIDTH_8 {
+		if context_.world.simdWidth == 8 {
+			ApplyRestitution_MeshWideW8(block, context_)
+			return
+		}
+	}
+
 	ApplyRestitution_MeshWideW4(block, context_)
 }
 
 StoreImpulses_MeshWide :: proc(block: SolverBlock, context_: ^StepContext, workerIndex: i32) {
+	when SIMD_HAS_WIDTH_8 {
+		if context_.world.simdWidth == 8 {
+			StoreImpulses_MeshWideW8(block, context_, workerIndex)
+			return
+		}
+	}
+
 	StoreImpulses_MeshWideW4(block, context_, workerIndex)
 }
 
 GetWideMeshConstraintByteCount :: proc(simdWidth: i32) -> i32 {
-	_ = simdWidth
+	when SIMD_HAS_WIDTH_8 {
+		if simdWidth == 8 {
+			return GetWideMeshConstraintByteCountW8()
+		}
+	} else {
+		_ = simdWidth
+	}
 
 	return GetWideMeshConstraintByteCountW4()
 }
 
 GetWideMeshManifoldByteCount :: proc(simdWidth: i32) -> i32 {
-	_ = simdWidth
+	when SIMD_HAS_WIDTH_8 {
+		if simdWidth == 8 {
+			return GetWideMeshManifoldByteCountW8()
+		}
+	} else {
+		_ = simdWidth
+	}
 
 	return GetWideMeshManifoldByteCountW4()
 }

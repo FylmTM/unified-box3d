@@ -8,6 +8,8 @@
 // - bindings/: package box3d for Odin programs using the library. The types, constants and inline procs are
 //   box3d/public_*.odin copied (minus what needs the port's internals), so they are identical by construction;
 //   library.odin declares every exported function (`foreign import` of lib/<platform>/).
+// - box3d/contact_solver_wide8.odin and box3d/convex_manifold_wide8.odin: the 8-wide (AVX2) instantiations of the
+//   wide solver and SAT, from their 4-wide files (tools/gen_wide.odin).
 // - export/layout.odin and tests/bindings/layout.odin: `#assert`s that every public struct's size, alignment and
 //   field offsets, and every enum's size and values, are C's (a probe compiled with clang prints them).
 // It prints the API coverage: prototypes the port lacks, and port procs that look like API but aren't in the
@@ -134,6 +136,9 @@ cmd_gen :: proc(args: []string) -> bool {
 	}
 	files["export/export.odin"] = export_src
 	files["bindings/library.odin"] = bindings_lib
+	for w in GEN_WIDE {
+		files[w[1]] = gen_wide8(w[0]) or_return
+	}
 
 	structs := make([dynamic]^Port_Decl, context.temp_allocator)
 	enums := make([dynamic]^Port_Decl, context.temp_allocator)

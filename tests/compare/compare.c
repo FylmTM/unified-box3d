@@ -2,8 +2,9 @@
 // per tick with hashes of everything observable. Built twice from this one file and the same headers: linked
 // statically against the original upstream library, and dynamically against ours. The traces must be identical.
 //
-//   compare <workers> [scene]     trace every scene (or one) with that many workers (1: serial; more: the
-//                                 library's built-in scheduler)
+//   compare <workers> [--w4] [scene]  trace every scene (or one) with that many workers (1: serial; more: the
+//                                     library's built-in scheduler); --w4: the 4-wide SIMD path even where the
+//                                     CPU has AVX2 (b3World_EnableSSE2Fallback), which must give the same trace
 //   compare --list                the scene names
 //
 // A trace line: `<scene> <tick> s=<state> e=<events> q=<queries> c=<counters> <counts>`. The hashes are 64-bit
@@ -1645,6 +1646,7 @@ static void FreeGeometry( Ctx* c )
 }
 
 static Ctx g_ctx;
+static bool g_width4;
 
 static void RunScene( const Scene* scene, int workers )
 {
@@ -1659,6 +1661,10 @@ static void RunScene( const Scene* scene, int workers )
 	b3WorldDef def = b3DefaultWorldDef();
 	def.workerCount = (uint32_t)workers;
 	c->world = b3CreateWorld( &def );
+	if ( g_width4 )
+	{
+		b3World_EnableSSE2Fallback( c->world, true );
+	}
 	scene->create( c );
 
 	{
@@ -1705,6 +1711,15 @@ static void RunScene( const Scene* scene, int workers )
 
 int main( int argc, char** argv )
 {
+	if ( argc >= 3 && strcmp( argv[2], "--w4" ) == 0 )
+	{
+		g_width4 = true;
+		for ( int i = 2; i + 1 < argc; ++i )
+		{
+			argv[i] = argv[i + 1];
+		}
+		argc -= 1;
+	}
 	if ( argc >= 2 && strcmp( argv[1], "--list" ) == 0 )
 	{
 		for ( int i = 0; i < SCENE_COUNT; ++i )
@@ -1715,7 +1730,7 @@ int main( int argc, char** argv )
 	}
 	if ( argc < 2 || argc > 3 )
 	{
-		fprintf( stderr, "usage: compare <workers> [scene] | --list\n" );
+		fprintf( stderr, "usage: compare <workers> [--w4] [scene] | --list\n" );
 		return 2;
 	}
 	int workers = atoi( argv[1] );

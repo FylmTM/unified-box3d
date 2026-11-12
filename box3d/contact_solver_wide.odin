@@ -3,9 +3,15 @@
 // SPDX-License-Identifier: MIT
 package box3d
 
-// This is the wide4.c instantiation (B3_SIMD_WIDTH 4): B3_WIDE(name) is name##W4.
-// unified: not ported: wide8.c (the AVX2 instantiation); every platform runs width 4
-// (that covers every B3_SIMD_WIDTH == 8 branch below)
+// This is the wide4.c instantiation (B3_SIMD_WIDTH 4): B3_WIDE(name) is name##W4. `./b3 gen` writes the wide8.c one
+// (contact_solver_wide8.odin, B3_SIMD_WIDTH 8, AVX2) from this file, so the B3_SIMD_WIDTH == 8 branches are kept.
+
+// unified: B3_SIMD_WIDTH and B3_WIDE_ALIGNMENT, file-private (simd_wide.odin)
+@(private = "file")
+SIMD_WIDTH :: 4
+@(private = "file")
+WIDE_ALIGNMENT :: (4 * SIMD_WIDTH)
+// unified end
 
 // Wide vec2
 Vec2W4 :: struct {
@@ -205,66 +211,177 @@ BodyStateW :: BodyStateW4
 	"body state layout",
 )
 
-@(private = "file")
-GatherBodies :: #force_inline proc(states: [^]BodyState, indices: [^]i32) -> BodyStateW {
-	identity := cast([^]f32)&identityBodyState
+when SIMD_WIDTH == 8 {
+	@(private = "file")
+	GatherBodies :: #force_inline proc(states: [^]BodyState, indices: [^]i32) -> BodyStateW {
+		identity := cast([^]f32)&identityBodyState
 
-	// Indices are 0 for null
-	p1 := indices[0] == 0 ? identity : cast([^]f32)&states[indices[0] - 1]
-	p2 := indices[1] == 0 ? identity : cast([^]f32)&states[indices[1] - 1]
-	p3 := indices[2] == 0 ? identity : cast([^]f32)&states[indices[2] - 1]
-	p4 := indices[3] == 0 ? identity : cast([^]f32)&states[indices[3] - 1]
+		// Indices are 0 for null
+		p1 := indices[0] == 0 ? identity : cast([^]f32)&states[indices[0] - 1]
+		p2 := indices[1] == 0 ? identity : cast([^]f32)&states[indices[1] - 1]
+		p3 := indices[2] == 0 ? identity : cast([^]f32)&states[indices[2] - 1]
+		p4 := indices[3] == 0 ? identity : cast([^]f32)&states[indices[3] - 1]
+		p5 := indices[4] == 0 ? identity : cast([^]f32)&states[indices[4] - 1]
+		p6 := indices[5] == 0 ? identity : cast([^]f32)&states[indices[5] - 1]
+		p7 := indices[6] == 0 ? identity : cast([^]f32)&states[indices[6] - 1]
+		p8 := indices[7] == 0 ? identity : cast([^]f32)&states[indices[7] - 1]
 
-	s: BodyStateW
-	pad: FloatW
-	TransposeW(LoadW(p1), LoadW(p2), LoadW(p3), LoadW(p4), &s.v.X, &s.v.Y, &s.v.Z, &pad)
-	TransposeW(LoadW(p1[4:]), LoadW(p2[4:]), LoadW(p3[4:]), LoadW(p4[4:]), &s.w.X, &s.w.Y, &s.w.Z, &pad)
-	TransposeW(LoadW(p1[8:]), LoadW(p2[8:]), LoadW(p3[8:]), LoadW(p4[8:]), &s.dp.X, &s.dp.Y, &s.dp.Z, &pad)
-	TransposeW(
-		LoadW(p1[12:]),
-		LoadW(p2[12:]),
-		LoadW(p3[12:]),
-		LoadW(p4[12:]),
-		&s.dq.V.X,
-		&s.dq.V.Y,
-		&s.dq.V.Z,
-		&s.dq.S,
-	)
-	return s
-}
+		s: BodyStateW
+		pad: FloatW
 
-@(private = "file")
-StoreBodyVelocity :: #force_inline proc(states: [^]BodyState, index: i32, v: FloatW, w: FloatW) {
-	// Indices are 0 for null
-	if index == 0 {
-		return
+		TransposeW(
+			LoadW(p1),
+			LoadW(p2),
+			LoadW(p3),
+			LoadW(p4),
+			LoadW(p5),
+			LoadW(p6),
+			LoadW(p7),
+			LoadW(p8),
+			&s.v.X,
+			&s.v.Y,
+			&s.v.Z,
+			&pad,
+			&s.w.X,
+			&s.w.Y,
+			&s.w.Z,
+			&pad,
+		)
+		TransposeW(
+			LoadW(p1[8:]),
+			LoadW(p2[8:]),
+			LoadW(p3[8:]),
+			LoadW(p4[8:]),
+			LoadW(p5[8:]),
+			LoadW(p6[8:]),
+			LoadW(p7[8:]),
+			LoadW(p8[8:]),
+			&s.dp.X,
+			&s.dp.Y,
+			&s.dp.Z,
+			&pad,
+			&s.dq.V.X,
+			&s.dq.V.Y,
+			&s.dq.V.Z,
+			&s.dq.S,
+		)
+
+		return s
 	}
 
-	state := &states[index - 1]
-	flags := state.flags
-	if (flags & dynamicFlag) == 0 {
-		return
+	@(private = "file")
+	StoreBodyVelocity :: #force_inline proc(states: [^]BodyState, index: i32, vw: FloatW) {
+		// Indices are 0 for null
+		if index == 0 {
+			return
+		}
+
+		state := &states[index - 1]
+		flags := state.flags
+		if (flags & dynamicFlag) == 0 {
+			return
+		}
+
+		StoreW(cast([^]f32)state, vw)
 	}
 
-	StoreW(cast([^]f32)state, v)
-	StoreW((cast([^]f32)state)[4:], w)
-}
+	// This writes only the velocities back to the solver bodies
+	@(private = "file")
+	ScatterBodies :: #force_inline proc(states: [^]BodyState, indices: [^]i32, simdBody: ^BodyStateW) {
+		// I don't use any dummy body in the body array because this will lead to multithreaded sharing and the
+		// associated cache flushing.
+		zero := ZeroW()
+		vw1, vw2, vw3, vw4, vw5, vw6, vw7, vw8: FloatW
+		TransposeW(
+			simdBody.v.X,
+			simdBody.v.Y,
+			simdBody.v.Z,
+			zero,
+			simdBody.w.X,
+			simdBody.w.Y,
+			simdBody.w.Z,
+			zero,
+			&vw1,
+			&vw2,
+			&vw3,
+			&vw4,
+			&vw5,
+			&vw6,
+			&vw7,
+			&vw8,
+		)
 
-// This writes only the velocities back to the solver bodies
-@(private = "file")
-ScatterBodies :: #force_inline proc(states: [^]BodyState, indices: [^]i32, simdBody: ^BodyStateW) {
-	// I don't use any dummy body in the body array because this will lead to multithreaded sharing and the
-	// associated cache flushing.
-	zero := ZeroW()
-	v1, v2, v3, v4: FloatW
-	TransposeW(simdBody.v.X, simdBody.v.Y, simdBody.v.Z, zero, &v1, &v2, &v3, &v4)
-	w1, w2, w3, w4: FloatW
-	TransposeW(simdBody.w.X, simdBody.w.Y, simdBody.w.Z, zero, &w1, &w2, &w3, &w4)
+		StoreBodyVelocity(states, indices[0], vw1)
+		StoreBodyVelocity(states, indices[1], vw2)
+		StoreBodyVelocity(states, indices[2], vw3)
+		StoreBodyVelocity(states, indices[3], vw4)
+		StoreBodyVelocity(states, indices[4], vw5)
+		StoreBodyVelocity(states, indices[5], vw6)
+		StoreBodyVelocity(states, indices[6], vw7)
+		StoreBodyVelocity(states, indices[7], vw8)
+	}
+} else {
+	@(private = "file")
+	GatherBodies :: #force_inline proc(states: [^]BodyState, indices: [^]i32) -> BodyStateW {
+		identity := cast([^]f32)&identityBodyState
 
-	StoreBodyVelocity(states, indices[0], v1, w1)
-	StoreBodyVelocity(states, indices[1], v2, w2)
-	StoreBodyVelocity(states, indices[2], v3, w3)
-	StoreBodyVelocity(states, indices[3], v4, w4)
+		// Indices are 0 for null
+		p1 := indices[0] == 0 ? identity : cast([^]f32)&states[indices[0] - 1]
+		p2 := indices[1] == 0 ? identity : cast([^]f32)&states[indices[1] - 1]
+		p3 := indices[2] == 0 ? identity : cast([^]f32)&states[indices[2] - 1]
+		p4 := indices[3] == 0 ? identity : cast([^]f32)&states[indices[3] - 1]
+
+		s: BodyStateW
+		pad: FloatW
+		TransposeW(LoadW(p1), LoadW(p2), LoadW(p3), LoadW(p4), &s.v.X, &s.v.Y, &s.v.Z, &pad)
+		TransposeW(LoadW(p1[4:]), LoadW(p2[4:]), LoadW(p3[4:]), LoadW(p4[4:]), &s.w.X, &s.w.Y, &s.w.Z, &pad)
+		TransposeW(LoadW(p1[8:]), LoadW(p2[8:]), LoadW(p3[8:]), LoadW(p4[8:]), &s.dp.X, &s.dp.Y, &s.dp.Z, &pad)
+		TransposeW(
+			LoadW(p1[12:]),
+			LoadW(p2[12:]),
+			LoadW(p3[12:]),
+			LoadW(p4[12:]),
+			&s.dq.V.X,
+			&s.dq.V.Y,
+			&s.dq.V.Z,
+			&s.dq.S,
+		)
+		return s
+	}
+
+	@(private = "file")
+	StoreBodyVelocity :: #force_inline proc(states: [^]BodyState, index: i32, v: FloatW, w: FloatW) {
+		// Indices are 0 for null
+		if index == 0 {
+			return
+		}
+
+		state := &states[index - 1]
+		flags := state.flags
+		if (flags & dynamicFlag) == 0 {
+			return
+		}
+
+		StoreW(cast([^]f32)state, v)
+		StoreW((cast([^]f32)state)[4:], w)
+	}
+
+	// This writes only the velocities back to the solver bodies
+	@(private = "file")
+	ScatterBodies :: #force_inline proc(states: [^]BodyState, indices: [^]i32, simdBody: ^BodyStateW) {
+		// I don't use any dummy body in the body array because this will lead to multithreaded sharing and the
+		// associated cache flushing.
+		zero := ZeroW()
+		v1, v2, v3, v4: FloatW
+		TransposeW(simdBody.v.X, simdBody.v.Y, simdBody.v.Z, zero, &v1, &v2, &v3, &v4)
+		w1, w2, w3, w4: FloatW
+		TransposeW(simdBody.w.X, simdBody.w.Y, simdBody.w.Z, zero, &w1, &w2, &w3, &w4)
+
+		StoreBodyVelocity(states, indices[0], v1, w1)
+		StoreBodyVelocity(states, indices[1], v2, w2)
+		StoreBodyVelocity(states, indices[2], v3, w3)
+		StoreBodyVelocity(states, indices[3], v4, w4)
+	}
 }
 
 #assert(offset_of(ManifoldPoint, anchorA) == 0, "manifold point layout")
@@ -284,7 +401,17 @@ zeroManifold := Manifold{}
 @(private = "file", rodata)
 zeroBodySim := BodySim{}
 
-// unified: not ported: the B3_GATHER_LANES macro (it takes a field name); its uses below are expanded inline
+// unified: the B3_GATHER_LANES macro (wide = b3SetW( lanes[0]->field, ..., lanes[last]->field )) is a proc taking
+// the field's offset in T: it loads the gathered lanes, the value b3SetW makes.
+@(private = "file")
+GatherLanes :: #force_inline proc(lanes: [^]^$T, $offset: uintptr) -> FloatW {
+	values: [SIMD_WIDTH]f32 = ---
+	#unroll for lane in 0 ..< SIMD_WIDTH {
+		values[lane] = (^f32)(uintptr(lanes[lane]) + offset)^
+	}
+	return LoadW(&values[0])
+}
+// unified end
 
 @(private = "file")
 GatherInvInertiaW :: proc(simLanes: [^]^BodySim) -> SymMatrix3W {
@@ -292,12 +419,40 @@ GatherInvInertiaW :: proc(simLanes: [^]^BodySim) -> SymMatrix3W {
 	i1 := cast([^]f32)&simLanes[1].invInertiaWorld.cx.x
 	i2 := cast([^]f32)&simLanes[2].invInertiaWorld.cx.x
 	i3 := cast([^]f32)&simLanes[3].invInertiaWorld.cx.x
+	when SIMD_WIDTH == 8 {
+		i4 := cast([^]f32)&simLanes[4].invInertiaWorld.cx.x
+		i5 := cast([^]f32)&simLanes[5].invInertiaWorld.cx.x
+		i6 := cast([^]f32)&simLanes[6].invInertiaWorld.cx.x
+		i7 := cast([^]f32)&simLanes[7].invInertiaWorld.cx.x
+	}
 
 	m: SymMatrix3W
 	unused: FloatW
-	TransposeW(LoadW(i0), LoadW(i1), LoadW(i2), LoadW(i3), &m.cxx, &m.cxy, &m.cxz, &unused)
-	TransposeW(LoadW(i0[4:]), LoadW(i1[4:]), LoadW(i2[4:]), LoadW(i3[4:]), &m.cyy, &m.cyz, &unused, &unused)
-	m.czz = SetW(i0[8], i1[8], i2[8], i3[8])
+	when SIMD_WIDTH == 8 {
+		TransposeW(
+			LoadW(i0),
+			LoadW(i1),
+			LoadW(i2),
+			LoadW(i3),
+			LoadW(i4),
+			LoadW(i5),
+			LoadW(i6),
+			LoadW(i7),
+			&m.cxx,
+			&m.cxy,
+			&m.cxz,
+			&unused,
+			&m.cyy,
+			&m.cyz,
+			&unused,
+			&unused,
+		)
+		m.czz = SetW(i0[8], i1[8], i2[8], i3[8], i4[8], i5[8], i6[8], i7[8])
+	} else {
+		TransposeW(LoadW(i0), LoadW(i1), LoadW(i2), LoadW(i3), &m.cxx, &m.cxy, &m.cxz, &unused)
+		TransposeW(LoadW(i0[4:]), LoadW(i1[4:]), LoadW(i2[4:]), LoadW(i3[4:]), &m.cyy, &m.cyz, &unused, &unused)
+		m.czz = SetW(i0[8], i1[8], i2[8], i3[8])
+	}
 	return m
 }
 
@@ -354,7 +509,11 @@ PerpW :: proc(a: Vec3W) -> Vec3W {
 }
 @(private = "file")
 IntsToFloatW :: proc(v: [^]i32) -> FloatW {
-	return SetW(f32(v[0]), f32(v[1]), f32(v[2]), f32(v[3]))
+	when SIMD_WIDTH == 8 {
+		return SetW(f32(v[0]), f32(v[1]), f32(v[2]), f32(v[3]), f32(v[4]), f32(v[5]), f32(v[6]), f32(v[7]))
+	} else {
+		return SetW(f32(v[0]), f32(v[1]), f32(v[2]), f32(v[3]))
+	}
 }
 
 // Get the contiguous manifold array that trails the constraint.
@@ -458,8 +617,8 @@ PrepareConstraintW :: #force_inline proc(
 	c.manifoldCount = manifoldCount
 
 	mA, mB: FloatW
-	mA = SetW(simLanesA[0].invMass, simLanesA[1].invMass, simLanesA[2].invMass, simLanesA[3].invMass)
-	mB = SetW(simLanesB[0].invMass, simLanesB[1].invMass, simLanesB[2].invMass, simLanesB[3].invMass)
+	mA = GatherLanes(&simLanesA[0], offset_of(BodySim, invMass))
+	mB = GatherLanes(&simLanesB[0], offset_of(BodySim, invMass))
 	iA := GatherInvInertiaW(&simLanesA[0])
 	iB := GatherInvInertiaW(&simLanesB[0])
 	c.invMassA = mA
@@ -468,42 +627,12 @@ PrepareConstraintW :: #force_inline proc(
 	c.invIB = iB
 
 	tangentVelocity: Vec3W
-	c.friction = SetW(
-		contactLanes[0].friction,
-		contactLanes[1].friction,
-		contactLanes[2].friction,
-		contactLanes[3].friction,
-	)
-	c.rollingResistance = SetW(
-		contactLanes[0].rollingResistance,
-		contactLanes[1].rollingResistance,
-		contactLanes[2].rollingResistance,
-		contactLanes[3].rollingResistance,
-	)
-	c.restitution = SetW(
-		contactLanes[0].restitution,
-		contactLanes[1].restitution,
-		contactLanes[2].restitution,
-		contactLanes[3].restitution,
-	)
-	tangentVelocity.X = SetW(
-		contactLanes[0].tangentVelocity.x,
-		contactLanes[1].tangentVelocity.x,
-		contactLanes[2].tangentVelocity.x,
-		contactLanes[3].tangentVelocity.x,
-	)
-	tangentVelocity.Y = SetW(
-		contactLanes[0].tangentVelocity.y,
-		contactLanes[1].tangentVelocity.y,
-		contactLanes[2].tangentVelocity.y,
-		contactLanes[3].tangentVelocity.y,
-	)
-	tangentVelocity.Z = SetW(
-		contactLanes[0].tangentVelocity.z,
-		contactLanes[1].tangentVelocity.z,
-		contactLanes[2].tangentVelocity.z,
-		contactLanes[3].tangentVelocity.z,
-	)
+	c.friction = GatherLanes(&contactLanes[0], offset_of(Contact, friction))
+	c.rollingResistance = GatherLanes(&contactLanes[0], offset_of(Contact, rollingResistance))
+	c.restitution = GatherLanes(&contactLanes[0], offset_of(Contact, restitution))
+	tangentVelocity.X = GatherLanes(&contactLanes[0], offset_of(Contact, tangentVelocity) + offset_of(Vec3, x))
+	tangentVelocity.Y = GatherLanes(&contactLanes[0], offset_of(Contact, tangentVelocity) + offset_of(Vec3, y))
+	tangentVelocity.Z = GatherLanes(&contactLanes[0], offset_of(Contact, tangentVelocity) + offset_of(Vec3, z))
 
 	invIAB := AddSymW(iA, iB)
 	if AllZeroW(c.rollingResistance) == false {
@@ -548,19 +677,46 @@ PrepareConstraintW :: #force_inline proc(
 			m1 := cast([^]f32)&manifoldLanes[1].normal.x
 			m2 := cast([^]f32)&manifoldLanes[2].normal.x
 			m3 := cast([^]f32)&manifoldLanes[3].normal.x
-			TransposeW(LoadW(m0), LoadW(m1), LoadW(m2), LoadW(m3), &normal.X, &normal.Y, &normal.Z, &twistImpulse)
-			TransposeW(
-				LoadW(m0[4:]),
-				LoadW(m1[4:]),
-				LoadW(m2[4:]),
-				LoadW(m3[4:]),
-				&frictionImpulse.X,
-				&frictionImpulse.Y,
-				&frictionImpulse.Z,
-				&rollingImpulse.X,
-			)
-			rollingImpulse.Y = SetW(m0[8], m1[8], m2[8], m3[8])
-			rollingImpulse.Z = SetW(m0[9], m1[9], m2[9], m3[9])
+			when SIMD_WIDTH == 8 {
+				m4 := cast([^]f32)&manifoldLanes[4].normal.x
+				m5 := cast([^]f32)&manifoldLanes[5].normal.x
+				m6 := cast([^]f32)&manifoldLanes[6].normal.x
+				m7 := cast([^]f32)&manifoldLanes[7].normal.x
+				TransposeW(
+					LoadW(m0),
+					LoadW(m1),
+					LoadW(m2),
+					LoadW(m3),
+					LoadW(m4),
+					LoadW(m5),
+					LoadW(m6),
+					LoadW(m7),
+					&normal.X,
+					&normal.Y,
+					&normal.Z,
+					&twistImpulse,
+					&frictionImpulse.X,
+					&frictionImpulse.Y,
+					&frictionImpulse.Z,
+					&rollingImpulse.X,
+				)
+				rollingImpulse.Y = SetW(m0[8], m1[8], m2[8], m3[8], m4[8], m5[8], m6[8], m7[8])
+				rollingImpulse.Z = SetW(m0[9], m1[9], m2[9], m3[9], m4[9], m5[9], m6[9], m7[9])
+			} else {
+				TransposeW(LoadW(m0), LoadW(m1), LoadW(m2), LoadW(m3), &normal.X, &normal.Y, &normal.Z, &twistImpulse)
+				TransposeW(
+					LoadW(m0[4:]),
+					LoadW(m1[4:]),
+					LoadW(m2[4:]),
+					LoadW(m3[4:]),
+					&frictionImpulse.X,
+					&frictionImpulse.Y,
+					&frictionImpulse.Z,
+					&rollingImpulse.X,
+				)
+				rollingImpulse.Y = SetW(m0[8], m1[8], m2[8], m3[8])
+				rollingImpulse.Z = SetW(m0[9], m1[9], m2[9], m3[9])
+			}
 		}
 
 		tangent1 := PerpW(normal)
@@ -592,20 +748,47 @@ PrepareConstraintW :: #force_inline proc(
 			p1 := cast([^]f32)&manifoldLanes[1].points[pointIndex]
 			p2 := cast([^]f32)&manifoldLanes[2].points[pointIndex]
 			p3 := cast([^]f32)&manifoldLanes[3].points[pointIndex]
+			when SIMD_WIDTH == 8 {
+				p4 := cast([^]f32)&manifoldLanes[4].points[pointIndex]
+				p5 := cast([^]f32)&manifoldLanes[5].points[pointIndex]
+				p6 := cast([^]f32)&manifoldLanes[6].points[pointIndex]
+				p7 := cast([^]f32)&manifoldLanes[7].points[pointIndex]
+			}
 
 			rA, rB: Vec3W
 			separation, normalImpulse: FloatW
-			TransposeW(LoadW(p0), LoadW(p1), LoadW(p2), LoadW(p3), &rA.X, &rA.Y, &rA.Z, &rB.X)
-			TransposeW(
-				LoadW(p0[4:]),
-				LoadW(p1[4:]),
-				LoadW(p2[4:]),
-				LoadW(p3[4:]),
-				&rB.Y,
-				&rB.Z,
-				&separation,
-				&normalImpulse,
-			)
+			when SIMD_WIDTH == 8 {
+				TransposeW(
+					LoadW(p0),
+					LoadW(p1),
+					LoadW(p2),
+					LoadW(p3),
+					LoadW(p4),
+					LoadW(p5),
+					LoadW(p6),
+					LoadW(p7),
+					&rA.X,
+					&rA.Y,
+					&rA.Z,
+					&rB.X,
+					&rB.Y,
+					&rB.Z,
+					&separation,
+					&normalImpulse,
+				)
+			} else {
+				TransposeW(LoadW(p0), LoadW(p1), LoadW(p2), LoadW(p3), &rA.X, &rA.Y, &rA.Z, &rB.X)
+				TransposeW(
+					LoadW(p0[4:]),
+					LoadW(p1[4:]),
+					LoadW(p2[4:]),
+					LoadW(p3[4:]),
+					&rB.Y,
+					&rB.Z,
+					&separation,
+					&normalImpulse,
+				)
+			}
 
 			rA.X = BlendW(zeroW, rA.X, pointMask)
 			rA.Y = BlendW(zeroW, rA.Y, pointMask)
