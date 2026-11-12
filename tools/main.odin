@@ -2,10 +2,13 @@
 // proc. Helpers here: running processes, paths, the pinned upstream commit.
 package tools
 
+import "base:runtime"
+
 import "core:fmt"
 import "core:os"
 import "core:slice"
 import "core:strings"
+import "core:thread"
 import "core:time"
 
 // The upstream Box3D this repo ports (README.md).
@@ -77,13 +80,69 @@ run :: proc(cmd: []string, dir := "") -> bool {
 	return st.exited && st.exit_code == 0
 }
 
+// os.process_exec, without its busy loop: it polls the child's pipes without ever blocking, so it keeps a core busy
+// for as long as the child runs, which slows down whatever runs beside it (benchmarks most of all). Here the reads
+// block: stdout on this thread, stderr on another.
+exec :: proc(
+	desc: os.Process_Desc,
+	allocator := context.allocator,
+) -> (
+	state: os.Process_State,
+	stdout, stderr: []u8,
+	err: os.Error,
+) {
+	stdout_r, stdout_w := os.pipe() or_return
+	defer os.close(stdout_r)
+	stderr_r, stderr_w := os.pipe() or_return
+	defer os.close(stderr_r)
+	process: os.Process
+	{
+		// The write ends close in any case, so the reads see the end of the output.
+		defer os.close(stdout_w)
+		defer os.close(stderr_w)
+		d := desc
+		d.stdout = stdout_w
+		d.stderr = stderr_w
+		process = os.process_start(d) or_return
+	}
+
+	read_all :: proc(r: ^os.File, allocator: runtime.Allocator) -> []u8 {
+		b := make([dynamic]u8, allocator)
+		buf: [4096]u8 = ---
+		for {
+			n, rerr := os.read(r, buf[:])
+			if n > 0 {
+				append(&b, ..buf[:n])
+			}
+			if rerr != nil || n == 0 {
+				return b[:]
+			}
+		}
+	}
+	Stderr_Job :: struct {
+		r:         ^os.File,
+		allocator: runtime.Allocator,
+		out:       []u8,
+	}
+	job := Stderr_Job{stderr_r, allocator, nil}
+	t := thread.create_and_start_with_poly_data(&job, proc(job: ^Stderr_Job) {
+		job.out = read_all(job.r, job.allocator)
+	})
+	stdout = read_all(stdout_r, allocator)
+	thread.join(t)
+	thread.destroy(t)
+	stderr = job.out
+	state = os.process_wait(process) or_return
+	return
+}
+
 // Runs a command and returns its stdout (stderr goes to ours).
 run_capture :: proc(cmd: []string, dir := "") -> (output: string, ok: bool) {
 	desc := os.Process_Desc {
 		command     = cmd,
 		working_dir = dir,
 	}
-	st, stdout, stderr, err := os.process_exec(desc, context.temp_allocator)
+	st, stdout, stderr, err := exec(desc, context.temp_allocator)
 	if err != nil {
 		return "", fail("cannot run %s: %v", cmd[0], err)
 	}

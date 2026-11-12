@@ -98,7 +98,7 @@ cc_exec :: proc(cmd: []string, env: []string = nil, dir := "") -> (output: strin
 		env         = env,
 		working_dir = dir,
 	}
-	st, stdout, stderr, err := os.process_exec(desc, context.allocator)
+	st, stdout, stderr, err := exec(desc, context.allocator)
 	if err != nil {
 		return fmt.aprintf("cannot run %s: %v", cmd[0], err), false
 	}
