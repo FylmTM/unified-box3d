@@ -1,5 +1,8 @@
 // `./b3 bench`: the scaling benchmark (bench/scale.odin) built from source, then the same file against the shared
 // library through bindings/. The prebuilt library must perform like the compiled-in port, and end in the same worlds.
+// --original runs the same scene on upstream's C Box3D (bench/scale_original.c, linked against `./b3 upstream`'s
+// static library), with upstream's world serializer for save and restore: what rollback costs without the port. Its
+// hashes are upstream's own, so they are not compared with ours. The flags pick what runs; none: source and library.
 package tools
 
 import "base:runtime"
@@ -14,24 +17,29 @@ register_bench :: proc "contextless" () {
 	register(
 		Command {
 			name = "bench",
-			usage = "[--source|--library]",
-			summary = "the scaling benchmark from source and against the shared library; fails if their worlds differ",
+			usage = "[--source] [--library] [--original]",
+			summary = "the scaling benchmark from source and against the shared library; fails if their worlds differ (--original: on upstream's C Box3D, its serializer for rollback; flags pick what runs, default the first two)",
 			run = cmd_bench,
 		},
 	)
 }
 
 cmd_bench :: proc(args: []string) -> bool {
-	source, library := true, true
+	source, library, original: bool
 	for a in args {
 		switch a {
 		case "--source":
-			library = false
+			source = true
 		case "--library":
-			source = false
+			library = true
+		case "--original":
+			original = true
 		case:
 			return fail("bench: unknown argument %q", a)
 		}
+	}
+	if !source && !library && !original {
+		source, library = true, true
 	}
 	dir := out("bench")
 	os.make_directory_all(dir)
@@ -92,6 +100,9 @@ cmd_bench :: proc(args: []string) -> bool {
 		}
 		fmt.print(lib_out)
 	}
+	if original {
+		bench_original() or_return
+	}
 	if source && library {
 		a, b := bench_hashes(src_out), bench_hashes(lib_out)
 		if a != b {
@@ -101,6 +112,24 @@ cmd_bench :: proc(args: []string) -> bool {
 			"bench: the library ends in the same worlds as the source build (%d runs)",
 			len(strings.split_lines(a, context.temp_allocator)) - 1,
 		)
+	}
+	return true
+}
+
+// bench/scale_original.c, compiled like upstream and with its internal headers (the serializer), linked against its
+// static library, then run.
+bench_original :: proc() -> bool {
+	lib := ensure_upstream() or_return
+	c := cc_toolchain() or_return
+	dir := out("bench", "original")
+	exe := path_join(dir, fmt.tprintf("scale_original%s", EXE))
+	src := strs(path("bench", "scale_original.c"))
+	cc_link_exe(c, upstream_flags(c), src, strs(lib), exe, path_join(dir, "obj")) or_return
+	log("bench: the original (upstream's C Box3D, its serializer for save and restore; hashes are upstream's)")
+	output, ok := run_capture({exe})
+	fmt.print(output)
+	if !ok {
+		return fail("bench: the original's run failed")
 	}
 	return true
 }

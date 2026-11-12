@@ -58,7 +58,8 @@ ensure_upstream :: proc() -> (lib: string, ok: bool) {
 	return lib, true
 }
 
-@(private = "file")
+// cc_flags plus upstream's public and internal headers: what upstream is built with, and what a program that calls
+// its internals (bench/scale_original.c) compiles with.
 upstream_flags :: proc(c: Cc) -> []string {
 	src := upstream_src()
 	inc := c.msvc ? "/I" : "-I"
