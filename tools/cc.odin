@@ -39,21 +39,20 @@ cc_env :: proc() -> []string {
 cc_cache: Maybe(Cc)
 
 // The flags upstream Box3D is built with for determinism (CMake's, minus warnings): C17, -O2 -DNDEBUG, no FP
-// contraction, the AVX2 path compiled out (x64 runs the same 4-wide SSE2 path as arm64 runs NEON), hidden symbols,
-// the static CRT on Windows. The comparison program and upstream's tests compile with the same.
+// contraction, hidden symbols, the static CRT on Windows; the AVX2 path in, chosen at run time as upstream ships it.
+// The target CPU is our library's (tools/build.odin: -microarch:x86-64-v2 on x64, generic on arm64), and -O2 is the
+// LLVM pipeline Odin's -o:speed runs, so the two are compiled alike. The comparison program and upstream's tests
+// compile with the same.
 cc_flags :: proc(c: Cc) -> []string {
-	if c.msvc {
-		return strs(
-			"/nologo",
-			"/MT",
-			"/O2",
-			"/DNDEBUG",
-			"/DBOX3D_DISABLE_AVX2",
-			"/std:c17",
-			"/clang:-ffp-contract=off",
-		)
+	when ODIN_ARCH == .amd64 {
+		cpu :: "-march=x86-64-v2"
+	} else {
+		cpu :: "-mcpu=generic"
 	}
-	flags := strs("-O2", "-DNDEBUG", "-DBOX3D_DISABLE_AVX2", "-std=gnu17", "-fvisibility=hidden", "-ffp-contract=off")
+	if c.msvc {
+		return strs("/nologo", "/MT", "/O2", "/DNDEBUG", "/std:c17", "/clang:-ffp-contract=off", "/clang:" + cpu)
+	}
+	flags := strs("-O2", "-DNDEBUG", "-std=gnu17", "-fvisibility=hidden", "-ffp-contract=off", cpu)
 	when ODIN_OS == .Darwin {
 		flags = concat(flags, strs("-arch", "arm64", "-mmacosx-version-min=11.0"))
 	}
