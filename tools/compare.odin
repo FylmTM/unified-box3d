@@ -3,7 +3,7 @@
 // scenes with 1 and 4 workers and diffs the traces tick by tick; also the original against itself (run to run, and
 // 1 against 4 workers). --tests builds upstream's own C tests that use only the public headers against both and
 // runs each; --bench builds upstream's benchmark app against both and prints the times side by side (a report, not
-// a gate).
+// a gate; --runs <n> repeats each benchmark and keeps the fastest run).
 package tools
 
 import "base:runtime"
@@ -21,8 +21,8 @@ register_compare :: proc "contextless" () {
 	register(
 		Command {
 			name = "compare",
-			usage = "[--tests] [--bench] [--original | --lib <dir>] [--scene <name>]",
-			summary = "our library against the original: the scenes' traces bit for bit (--tests: upstream's C tests on both; --bench: its benchmarks, a report; --original: the original alone; --lib: ours from <dir>, not built)",
+			usage = "[--tests] [--bench [--runs <n>]] [--original | --lib <dir>] [--scene <name>]",
+			summary = "our library against the original: the scenes' traces bit for bit (--tests: upstream's C tests on both; --bench: its benchmarks, a report, the fastest of --runs runs (1); --original: the original alone; --lib: ours from <dir>, not built)",
 			run = cmd_compare,
 		},
 	)
@@ -41,10 +41,13 @@ Lib :: struct {
 Compare_Opts :: struct {
 	tests, bench, original: bool,
 	scene, lib_dir:         string,
+	runs:                   int,
 }
 
 cmd_compare :: proc(args: []string) -> bool {
-	opts: Compare_Opts
+	opts := Compare_Opts {
+		runs = 1,
+	}
 	for i := 0; i < len(args); i += 1 {
 		switch args[i] {
 		case "--tests":
@@ -53,14 +56,21 @@ cmd_compare :: proc(args: []string) -> bool {
 			opts.bench = true
 		case "--original":
 			opts.original = true
-		case "--scene", "--lib":
+		case "--scene", "--lib", "--runs":
 			if i + 1 >= len(args) {
 				return fail("compare: %s needs a value", args[i])
 			}
-			if args[i] == "--scene" {
+			switch args[i] {
+			case "--scene":
 				opts.scene = args[i + 1]
-			} else {
+			case "--lib":
 				opts.lib_dir = args[i + 1]
+			case "--runs":
+				n, n_ok := strconv.parse_int(args[i + 1])
+				if !n_ok || n < 1 {
+					return fail("compare: --runs needs a positive count, not %q", args[i + 1])
+				}
+				opts.runs = n
 			}
 			i += 1
 		case:
@@ -90,7 +100,7 @@ cmd_compare :: proc(args: []string) -> bool {
 		ok = compare_tests(c, libs[:]) && ok
 	}
 	if opts.bench {
-		ok = compare_bench(c, libs[:]) && ok
+		ok = compare_bench(c, libs[:], opts.runs) && ok
 	}
 	return ok
 }
@@ -586,7 +596,7 @@ parse_bench :: proc(text: string) -> [dynamic]Bench {
 }
 
 @(private = "file")
-compare_bench :: proc(c: Cc, libs: []Lib) -> bool {
+compare_bench :: proc(c: Cc, libs: []Lib, repeats: int) -> bool {
 	src := upstream_src()
 	sources := strs(
 		path_join(src, "benchmark", "main.c"),
@@ -602,10 +612,11 @@ compare_bench :: proc(c: Cc, libs: []Lib) -> bool {
 	for lib, i in libs {
 		exes[i] = build_program(c, lib, "benchmark", sources, extra) or_return
 	}
-	// One at a time (timing), one worker, one run; each program writes its CSVs in its own directory.
+	// One at a time (timing), one worker, `repeats` runs of each benchmark (parse_bench keeps the fastest); each program
+	// writes its CSVs in its own directory.
 	results := make([][dynamic]Bench, len(libs), context.temp_allocator)
 	for exe, i in exes {
-		runs := []Run{{cmd = strs(exe, "-t=1", "-w=1", "-r=1")}}
+		runs := []Run{{cmd = strs(exe, "-t=1", "-w=1", fmt.tprintf("-r=%d", repeats))}}
 		run_programs(runs, parallel = false)
 		if !runs[0].ok {
 			fmt.println(runs[0].output)
@@ -613,7 +624,7 @@ compare_bench :: proc(c: Cc, libs: []Lib) -> bool {
 		}
 		results[i] = parse_bench(runs[0].output)
 	}
-	fmt.println("upstream's benchmarks, 1 worker, one run (ms; a report, not a gate):")
+	fmt.printfln("upstream's benchmarks, 1 worker, fastest of %d run(s) (ms; a report, not a gate):", repeats)
 	fmt.printf("  %-16s", "benchmark")
 	for lib in libs {
 		fmt.printf(" %10s", lib.name)
