@@ -156,7 +156,12 @@ IndexPair :: struct {
 	a, b: i32,
 }
 
-// unified: not ported: b3PrefetchHash (prefetch hints are dropped, PORTING.md)
+@(private = "file")
+PrefetchHash :: #force_inline proc(set: ^HashSet, hash: u32) {
+	capacity := set.capacity
+	index := hash & (capacity - 1)
+	Prefetch(&set.items[index])
+}
 
 // The shape pair gauntlet. Everything here is a property of the pair, not of a compound child,
 // so a compound runs it once for the whole pair.
@@ -306,7 +311,7 @@ FlushCandidatePairs :: proc(context_: ^PairContext) {
 	for i: i32 = 0; i < plainCount; i += 1 {
 		keys[i] = ShapePairKey(plain[i].shapeIdA, plain[i].shapeIdB, 0)
 		hashes[i] = KeyHash(keys[i])
-		// unified: not ported: b3PrefetchHash (prefetch hints are dropped)
+		PrefetchHash(&bp.pairSet, hashes[i])
 	}
 
 	// Cull existing pairs.
@@ -321,7 +326,11 @@ FlushCandidatePairs :: proc(context_: ^PairContext) {
 	}
 
 	// Prefetch shapes.
-	// unified: not ported: the shape prefetch loop (prefetch hints are dropped)
+	shapes := world.shapes.data
+	for i: i32 = 0; i < count2; i += 1 {
+		Prefetch(&shapes[candidates[i].shapeIdA])
+		Prefetch(&shapes[candidates[i].shapeIdB])
+	}
 
 	// Filter candidates.
 	for i: i32 = 0; i < count2; i += 1 {

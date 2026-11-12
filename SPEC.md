@@ -41,7 +41,7 @@ For determinism and the language:
 - Length-scaled constants (`HUGE`, `LINEAR_SLOP`, ...) are package variables recomputed by
   `SetLengthUnitsPerMeter`.
 - `B3_DEBUG` and validation default off (`-define:BOX3D_DEBUG=true`), as upstream's release build (`NDEBUG`).
-- Not ported: prefetch hints, the Tracy macros, double precision, C++ operator overloads, `#if 0` blocks.
+- Not ported: the Tracy macros, double precision, C++ operator overloads, `#if 0` blocks.
 - libc replaced: `core:os` file I/O, `core:time`/`core:thread`/`core:sync` for timers, threads and atomics,
   `remainderf` and `floorf` written out exactly.
 

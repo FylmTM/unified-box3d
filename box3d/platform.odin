@@ -3,10 +3,15 @@
 // SPDX-License-Identifier: MIT
 package box3d
 
+import "base:intrinsics"
 import "core:sync"
 
-// unified: b3Prefetch is not ported (a hint only); the atomics are core:sync's, sequentially consistent unless
-// the C says otherwise.
+// A T0 read prefetch (upstream's _mm_prefetch / __builtin_prefetch( addr, 0, 3 )); a hint, no effect on results.
+Prefetch :: #force_inline proc "contextless" (addr: rawptr) {
+	intrinsics.prefetch_read_data(addr, 3)
+}
+
+// unified: the atomics are core:sync's, sequentially consistent unless the C says otherwise.
 
 AtomicStoreInt :: #force_inline proc "contextless" (a: ^AtomicInt, value: i32) {
 	sync.atomic_store(&a.value, value)

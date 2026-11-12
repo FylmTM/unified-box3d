@@ -75,8 +75,8 @@ does, in the same order, with the same names. Upstream's tests, ported 1:1 to `t
 - `B3_INLINE` → plain proc, except in the math headers (`public_math_functions.odin`, `math_internal.odin`):
   `#force_inline`, since every C file inlines them and Odin's split modules otherwise can't;
   `B3_FORCE_INLINE` → `#force_inline proc`. `B3_RESTRICT`/`restrict` → drop.
-- Tracy macros (`b3TracyCZone*`, `b3TracyCFrame`) and `b3Prefetch` → drop. `B3_CHECK_DEF(def)` → `CHECK_DEF(def)`
-  (an assert, in `core.odin`).
+- Tracy macros (`b3TracyCZone*`, `b3TracyCFrame`) → drop. `b3Prefetch(addr)` → `Prefetch(addr)` (`platform.odin`,
+  `intrinsics.prefetch_read_data`). `B3_CHECK_DEF(def)` → `CHECK_DEF(def)` (an assert, in `core.odin`).
 - `b3Array(T)` → `Array(T)` and the `b3Array_*` macros → procs of the same name taking `^Array(T)`
   (`b3Array_Push(a, v)` → `Array_Push(&a, v)`, `b3Array_Get(a, i)` → `Array_Get(&a, i)` returning `^T`). See
   `container.odin`. `b3DeclareArray(T)` lines → nothing (the type is generic).

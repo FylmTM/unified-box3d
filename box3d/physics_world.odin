@@ -809,7 +809,14 @@ GetMaxWorldCount :: proc() -> i32 {
 // Issues T0 prefetches across the cache lines of a b3Contact (216 B / 4 lines).
 // Used to hide the random-access latency of contact lookups while we work on an
 // earlier index.
-// unified: not ported: b3PrefetchContact (prefetch hints are dropped, PORTING.md)
+@(private = "file")
+PrefetchContact :: #force_inline proc(contact: ^Contact) {
+	p := ([^]u8)(contact)
+	Prefetch(p)
+	Prefetch(&p[64])
+	Prefetch(&p[128])
+	Prefetch(&p[192])
+}
 
 @(private = "file")
 ResolveContactBodySim :: #force_inline proc(
@@ -851,9 +858,14 @@ CollideTask :: proc(startIndex: i32, endIndex: i32, workerIndex: i32, context_: 
 	speculativeDistance := SPECULATIVE_DISTANCE
 	recycleDistanceNonTouching := MinFloat(recycleDistance, speculativeDistance)
 
-	// unified: not ported: the contact prefetch (contactPrefetchDistance, prefetchEnd); prefetch hints are dropped
+	contactPrefetchDistance: i32 : 4
+	prefetchEnd := endIndex - contactPrefetchDistance
 
 	for i := startIndex; i < endIndex; i += 1 {
+		if i < prefetchEnd {
+			PrefetchContact(&contacts[contactIndices[i + contactPrefetchDistance]])
+		}
+
 		contactIndex := contactIndices[i]
 		assert(contactIndex < world.contacts.count)
 
