@@ -86,5 +86,10 @@ B3_API bool b3World_LoadImage( b3WorldId worldId, const uint8_t* bytes, int size
 /// hashes in any process.
 B3_API uint64_t b3World_HashState( b3WorldId worldId );
 
+/// The checksum of the awake bodies: each one's id, transform and velocities, in the solver's order. A fraction of
+/// b3World_HashState's cost, for a check every tick; it leaves out contacts, warm starts, joints, islands, trees and
+/// sleeping bodies (hash the whole state with b3World_HashState on the ticks peers compare).
+B3_API uint64_t b3World_HashAwakeBodies( b3WorldId worldId );
+
 /**@}*/ // world_state
 

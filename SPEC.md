@@ -24,7 +24,8 @@ Ours (`include/box3d/unified.h`):
 - In-process snapshots, for rollback: `b3World_SaveSnapshot`, `b3World_RestoreSnapshot` (a memcpy of the world's
   arena), `b3DestroyWorldSnapshot`.
 - Canonical images, portable across machines: `b3World_SaveImage(world, state, withGeometry)` (self-contained with
-  geometry: late join), `b3World_LoadImage`, `b3World_HashState` (the checksum).
+  geometry: late join), `b3World_LoadImage`, `b3World_HashState` (the checksum), `b3World_HashAwakeBodies` (a cheap
+  checksum of the awake bodies' poses and velocities, for every tick).
 - The serializer-based save/restore this started from: `b3CreateWorldStateCache`, `b3World_SaveState`,
   `b3World_RestoreState`, `b3World_RestoreStateFromBytes`.
 

@@ -168,6 +168,34 @@ World_HashState :: proc(worldId: WorldId) -> u64 {
 	return rapidhash(img.hashBuffer.data, int(size))
 }
 
+// The checksum of the awake bodies: rapidhash over each one's id, transform, and linear and angular velocity, in the
+// awake set's order (so a body asleep on one machine and awake on another changes it too). A fraction of
+// World_HashState's cost, for checking every tick: it leaves out contacts, warm starts, joints, islands, trees and
+// sleeping bodies, which World_HashState covers. Call at a step boundary.
+World_HashAwakeBodies :: proc(worldId: WorldId) -> u64 {
+	world := GetWorldFromId(worldId)
+	assert(world.locked == false)
+	AwakeBody :: struct {
+		bodyId:          i32,
+		transform:       WorldTransform,
+		linearVelocity:  Vec3,
+		angularVelocity: Vec3,
+	}
+	#assert(size_of(AwakeBody) == 4 + 28 + 12 + 12) // no padding: the hash sees only these bytes
+
+	buf := &GetWorldImageData(world).hashBuffer
+	buf.size = 0
+	buf.countOnly = false
+	set := Array_Get(&world.solverSets, i32(SetType.awakeSet))
+	for i: i32 = 0; i < set.bodySims.count; i += 1 {
+		sim := &set.bodySims.data[i]
+		state := &set.bodyStates.data[i]
+		record := AwakeBody{sim.bodyId, sim.transform, state.linearVelocity, state.angularVelocity}
+		RecBufAppend(buf, &record, size_of(record))
+	}
+	return rapidhash(buf.data, int(buf.size))
+}
+
 // ---- geometry table ----------------------------------------------------------------------------------------------
 
 // The content hash and byte count of a live shape's geometry blob.

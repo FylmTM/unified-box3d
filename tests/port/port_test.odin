@@ -147,3 +147,59 @@ snapshot_rollback_skips_free_blocks :: proc(t: ^testing.T) {
 		}
 	}
 }
+
+// World_HashAwakeBodies: the same for the same awake bodies (1 or 4 workers, after a rollback), different when one
+// body's velocity differs.
+@(test)
+hash_awake_bodies :: proc(t: ^testing.T) {
+	make_world :: proc(workers: int) -> (w: b3.WorldId, bodies: [dynamic]b3.BodyId) {
+		w = world_make(workers)
+		img_box(w, .staticBody, {0, -0.5, 0}, {20, 0.5, 20})
+		for i in 0 ..< 200 {
+			append(
+				&bodies,
+				img_box(
+					w,
+					.dynamicBody,
+					{f32(i % 10) - 5, 0.5 + f32(i / 100) * 0.9, f32(i / 10 % 10) - 5},
+					{0.4, 0.4, 0.4},
+				),
+			)
+		}
+		return
+	}
+	a, bodiesA := make_world(1)
+	defer world_destroy(a)
+	defer delete(bodiesA)
+	b, bodiesB := make_world(4)
+	defer world_destroy(b)
+	defer delete(bodiesB)
+
+	snap: b3.WorldSnapshot
+	defer b3.DestroyWorldSnapshot(&snap)
+	b3.World_SaveSnapshot(a, &snap)
+	hashes: [30]u64
+	for k in 0 ..< len(hashes) {
+		step(a, 1)
+		step(b, 1)
+		hashes[k] = b3.World_HashAwakeBodies(a)
+		if !testing.expectf(t, hashes[k] == b3.World_HashAwakeBodies(b), "1 and 4 workers differ at tick %d", k) {
+			return
+		}
+	}
+	testing.expect(t, b3.World_RestoreSnapshot(a, &snap))
+	for k in 0 ..< len(hashes) {
+		step(a, 1)
+		if !testing.expectf(t, hashes[k] == b3.World_HashAwakeBodies(a), "the rollback differs at tick %d", k) {
+			return
+		}
+	}
+
+	v := b3.Body_GetLinearVelocity(bodiesB[150])
+	b3.Body_SetLinearVelocity(bodiesB[150], {v.x, v.y, v.z + 1.0e-6})
+	testing.expect(
+		t,
+		b3.World_HashAwakeBodies(a) != b3.World_HashAwakeBodies(b),
+		"a changed velocity leaves the hash as it was",
+	)
+}

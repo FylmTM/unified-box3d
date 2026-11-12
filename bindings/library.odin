@@ -1301,4 +1301,6 @@ foreign lib {
 	World_LoadImage :: proc(worldId: WorldId, bytes: [^]u8, size: i32) -> bool ---
 	@(link_name = "b3World_HashState")
 	World_HashState :: proc(worldId: WorldId) -> u64 ---
+	@(link_name = "b3World_HashAwakeBodies")
+	World_HashAwakeBodies :: proc(worldId: WorldId) -> u64 ---
 }

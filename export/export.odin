@@ -3817,3 +3817,9 @@ World_HashState :: proc "c" (worldId: box3d.WorldId) -> u64 {
 	return box3d.World_HashState(worldId)
 }
 
+@(export, link_name = "b3World_HashAwakeBodies")
+World_HashAwakeBodies :: proc "c" (worldId: box3d.WorldId) -> u64 {
+	context = runtime.default_context()
+	return box3d.World_HashAwakeBodies(worldId)
+}
+
