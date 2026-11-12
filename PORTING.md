@@ -79,6 +79,8 @@ does, in the same order, with the same names. Upstream's tests, ported 1:1 to `t
   (it doesn't get C's inline hint) are `#force_inline`: `SolvePointConstraint`, `AllocateManifolds`, `Bump`,
   `SetBitGrow`. Check after a port: build the release library with `-debug` and list its out-of-line procs
   (`llvm-pdbutil dump --symbols`) against the original's objects (`llvm-nm`).
+- A local array C leaves uninitialized (a traversal stack, a batch, a scratch buffer) → `= ---`, as C: Odin zeroes
+  locals, which costs a memset of the whole array on every call.
 - Tracy macros (`b3TracyCZone*`, `b3TracyCFrame`) → drop. `b3Prefetch(addr)` → `Prefetch(addr)` (`platform.odin`,
   `intrinsics.prefetch_read_data`). `B3_CHECK_DEF(def)` → `CHECK_DEF(def)` (an assert, in `core.odin`).
 - `b3Array(T)` → `Array(T)` and the `b3Array_*` macros → procs of the same name taking `^Array(T)`

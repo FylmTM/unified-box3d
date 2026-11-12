@@ -204,7 +204,7 @@ when ENABLE_VALIDATION {
 
 		// Check nodes
 		count: i32 = 0
-		stack: [64]^MeshNode
+		stack: [64]^MeshNode = ---
 		stack[count] = GetRoot(mesh)
 		count += 1
 
@@ -894,7 +894,7 @@ SortMeshTriangles :: proc(mesh: ^MeshData) -> bool {
 	Array_CreateN(&tempMaterialIndices, mesh.triangleCount)
 
 	count: i32 = 0
-	stack: [MESH_STACK_SIZE]^MeshNode
+	stack: [MESH_STACK_SIZE]^MeshNode = ---
 	stack[count] = GetRootWrite(mesh)
 	count += 1
 
@@ -1731,7 +1731,7 @@ OverlapMesh :: proc(shape: ^Mesh, shapeTransform: Transform, proxy: ^ShapeProxy)
 	assert(proxy.count > 0)
 	cache := SimplexCache{}
 
-	buffer: [MAX_SHAPE_CAST_POINTS]Vec3
+	buffer: [MAX_SHAPE_CAST_POINTS]Vec3 = ---
 	localProxy := MakeLocalProxy(proxy, shapeTransform, &buffer[0])
 	aabb := ComputeProxyAABB(&localProxy)
 
@@ -1753,7 +1753,7 @@ OverlapMesh :: proc(shape: ^Mesh, shapeTransform: Transform, proxy: ^ShapeProxy)
 	input.useRadii = true
 
 	count: i32 = 0
-	stack: [MESH_STACK_SIZE]^MeshNode
+	stack: [MESH_STACK_SIZE]^MeshNode = ---
 	node := GetRoot(shape.data)
 	triangles := GetMeshTriangles(shape.data)
 	vertices := GetMeshVertices(shape.data)
@@ -1854,7 +1854,7 @@ RayCastMesh :: proc(mesh: ^Mesh, input: ^RayCastInput) -> CastOutput {
 	invScaledRayMax := MaxV(invScaledRayStart, invScaledRayEnd)
 
 	count: i32 = 0
-	stack: [MESH_STACK_SIZE]^MeshNode
+	stack: [MESH_STACK_SIZE]^MeshNode = ---
 	node := GetRoot(data)
 	triangles := GetMeshTriangles(data)
 	vertices := GetMeshVertices(data)
@@ -1977,7 +1977,7 @@ ShapeCastMesh :: proc(mesh: ^Mesh, input: ^ShapeCastInput) -> CastOutput {
 	invScaledShapeExtent := MulV(absInvScale, shapeExtent)
 
 	count: i32 = 0
-	stack: [MESH_STACK_SIZE]^MeshNode
+	stack: [MESH_STACK_SIZE]^MeshNode = ---
 	node := GetRoot(data)
 	triangles := GetMeshTriangles(data)
 	vertices := GetMeshVertices(data)
@@ -2127,7 +2127,7 @@ CollideMoverAndMesh :: proc(planes: [^]PlaneResult, capacity: i32, shape: ^Mesh,
 	invScaledBoundsExtent := SubV(invScaledBoundsMax, invScaledBoundsCenter)
 
 	count: i32 = 0
-	stack: [MESH_STACK_SIZE]^MeshNode
+	stack: [MESH_STACK_SIZE]^MeshNode = ---
 	node := GetRoot(shape.data)
 	triangles := GetMeshTriangles(shape.data)
 	vertices := GetMeshVertices(shape.data)
@@ -2246,7 +2246,7 @@ QueryMesh :: proc(mesh: ^Mesh, bounds: AABB, fcn: MeshQueryFcn, context_: rawptr
 	data := mesh.data
 
 	count: i32 = 0
-	stack: [MESH_STACK_SIZE]^MeshNode
+	stack: [MESH_STACK_SIZE]^MeshNode = ---
 	node := GetRoot(data)
 	triangles := GetMeshTriangles(data)
 	vertices := GetMeshVertices(data)

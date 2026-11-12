@@ -776,7 +776,7 @@ OverlapCompound :: proc(shape: ^CompoundData, shapeTransform: Transform, proxy: 
 	assert(0 < proxy.count && proxy.count <= MAX_SHAPE_CAST_POINTS)
 
 	// Use local proxy.
-	buffer: [MAX_SHAPE_CAST_POINTS]Vec3
+	buffer: [MAX_SHAPE_CAST_POINTS]Vec3 = ---
 	context_ := CompoundOverlapContext {
 		compound = shape,
 		proxy    = MakeLocalProxy(proxy, shapeTransform, &buffer[0]),
@@ -884,7 +884,7 @@ CompoundShapeCastCallback :: proc "c" (input: ^BoxCastInput, proxyId: i32, userD
 
 	// Get the input in the child local space.
 	localInput := ShapeCastInput{}
-	localPoints: [MAX_SHAPE_CAST_POINTS]Vec3
+	localPoints: [MAX_SHAPE_CAST_POINTS]Vec3 = ---
 	localInput.proxy = MakeLocalProxy(&shapeInput.proxy, child.transform, &localPoints[0])
 	localInput.translation = InvRotateVector(child.transform.q, shapeInput.translation)
 	localInput.maxFraction = input.maxFraction

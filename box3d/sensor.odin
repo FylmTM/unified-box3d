@@ -51,7 +51,7 @@ OverlapSensor :: proc(
 	// Get the visitor shape in the frame of the sensor
 	relativeTransform := InvMulTransforms(sensorTransform, visitorTransform)
 
-	localPoints: [MAX_SHAPE_CAST_POINTS]Vec3
+	localPoints: [MAX_SHAPE_CAST_POINTS]Vec3 = ---
 	localProxy: ShapeProxy
 
 	localProxy.count = MinInt(proxy.count, MAX_SHAPE_CAST_POINTS)

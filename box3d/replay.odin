@@ -2042,7 +2042,7 @@ RecComputeQueryBounds :: proc(q: ^RecDrawQuery) {
 
 	// Shape points relative to the origin, plus the fattening radius. A ray has no shape, so it falls
 	// through to a single point at the origin.
-	local: [MAX_SHAPE_CAST_POINTS]Vec3
+	local: [MAX_SHAPE_CAST_POINTS]Vec3 = ---
 	count: i32 = 0
 	radius: f32 = 0.0
 	#partial switch RecQueryKind(q.kind) {

@@ -277,7 +277,7 @@ FlushCandidatePairs :: proc(context_: ^PairContext) {
 	count1 := context_.batchCount
 	context_.batchCount = 0
 
-	plain: [CANDIDATE_BATCH]CandidatePair
+	plain: [CANDIDATE_BATCH]CandidatePair = ---
 	plainCount: i32 = 0
 
 	if context_.checkCompounds {
@@ -306,8 +306,8 @@ FlushCandidatePairs :: proc(context_: ^PairContext) {
 	}
 
 	// Prefetch hash set entries. Less than 1% gain in Box2D but the 3D shape is fatter.
-	keys: [CANDIDATE_BATCH]u64
-	hashes: [CANDIDATE_BATCH]u32
+	keys: [CANDIDATE_BATCH]u64 = ---
+	hashes: [CANDIDATE_BATCH]u32 = ---
 	for i: i32 = 0; i < plainCount; i += 1 {
 		keys[i] = ShapePairKey(plain[i].shapeIdA, plain[i].shapeIdB, 0)
 		hashes[i] = KeyHash(keys[i])
@@ -315,7 +315,7 @@ FlushCandidatePairs :: proc(context_: ^PairContext) {
 	}
 
 	// Cull existing pairs.
-	candidates: [CANDIDATE_BATCH]CandidatePair
+	candidates: [CANDIDATE_BATCH]CandidatePair = ---
 	count2: i32 = 0
 	for i: i32 = 0; i < plainCount; i += 1 {
 		if ContainsHashedKey(&bp.pairSet, keys[i], hashes[i]) == false {
@@ -370,7 +370,7 @@ CollideProxyAndSubtree :: proc(proxy: ^TreeNode, nodes: [^]TreeNode, pair: i32, 
 	boxv := LoadAABBV(&proxy.aabb)
 	shapeId := proxy.shapeIndex
 
-	stack: [TREE_STACK_SIZE]i32
+	stack: [TREE_STACK_SIZE]i32 = ---
 	stackCount: i32 = 0
 	stack[stackCount] = pair
 	stackCount += 1
@@ -458,7 +458,7 @@ CollideCrossPairs :: proc(
 	subtreeB: ^TreeNode,
 	context_: ^PairContext,
 ) {
-	stack: [TREE_STACK_SIZE]IndexPair
+	stack: [TREE_STACK_SIZE]IndexPair = ---
 	stackCount: i32 = 0
 
 	// Seed the stack.
@@ -518,7 +518,7 @@ GatherCrossSeeds :: proc(treeA: ^DynamicTree, treeB: ^DynamicTree, seeds: [^]Nod
 
 	// Breadth-first search from the two roots as one pair. An empty tree has a sentinel root that
 	// survives nothing.
-	queue: [2 * CROSS_SEED_COUNT]NodePair
+	queue: [2 * CROSS_SEED_COUNT]NodePair = ---
 	mask: i32 = 2 * CROSS_SEED_COUNT - 1
 	head: i32 = 0
 	tail: i32 = 0
@@ -665,7 +665,7 @@ UpdateBroadPhasePairs :: proc(world: ^World) {
 		dynamicMoveCount := GatherMovedSiblings(dynamicTree, bp.movedSiblings)
 
 		// Get seeds for colliding against the static and kinematic trees.
-		crossSeeds: [2 * CROSS_SEED_COUNT]NodePair
+		crossSeeds: [2 * CROSS_SEED_COUNT]NodePair = ---
 		staticSeedCount := GatherCrossSeeds(dynamicTree, &bp.trees[BodyType.staticBody], raw_data(&crossSeeds))
 		assert(staticSeedCount <= CROSS_SEED_COUNT)
 		kinematicSeedCount := GatherCrossSeeds(

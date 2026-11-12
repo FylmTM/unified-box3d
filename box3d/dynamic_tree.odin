@@ -1607,8 +1607,8 @@ when TREE_HEURISTIC == 0 {
 	PartitionSAH :: proc(indices: [^]i32, binIndices: [^]i32, boxes: [^]AABB, count: i32) -> i32 {
 		assert(count > 0)
 
-		bins: [BIN_COUNT]TreeBin
-		planes: [BIN_COUNT - 1]TreePlane
+		bins: [BIN_COUNT]TreeBin = ---
+		planes: [BIN_COUNT - 1]TreePlane = ---
 
 		center := AABB_Center(boxes[0])
 		centroidAABB: AABB

@@ -944,7 +944,7 @@ ShapeCastHeightField :: proc(heightField: ^HeightFieldData, input: ^ShapeCastInp
 }
 
 OverlapHeightField :: proc(shape: ^HeightFieldData, shapeTransform: Transform, proxy: ^ShapeProxy) -> bool {
-	buffer: [MAX_SHAPE_CAST_POINTS]Vec3
+	buffer: [MAX_SHAPE_CAST_POINTS]Vec3 = ---
 	localProxy := MakeLocalProxy(proxy, shapeTransform, &buffer[0])
 	aabb := ComputeProxyAABB(&localProxy)
 
