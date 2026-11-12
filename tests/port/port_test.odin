@@ -97,3 +97,53 @@ snapshot_rollback_is_exact :: proc(t: ^testing.T) {
 		}
 	}
 }
+
+// The same in a world big enough that growing arrays left large free blocks, which a save leaves out
+// (world_arena.odin, ArenaFindSkips), with 4 workers and bodies created inside the window (reusing freed blocks).
+@(test)
+snapshot_rollback_skips_free_blocks :: proc(t: ^testing.T) {
+	w := world_make(4)
+	defer world_destroy(w)
+	img_box(w, .staticBody, {0, -0.5, 0}, {40, 0.5, 40})
+	for i in 0 ..< 800 {
+		img_box(w, .dynamicBody, {f32(i % 20) - 10, 0.5 + f32(i / 400) * 0.9, f32(i / 20 % 20) - 10}, {0.4, 0.4, 0.4})
+	}
+	step(w, 30)
+
+	snap: b3.WorldSnapshot
+	defer b3.DestroyWorldSnapshot(&snap)
+	b3.World_SaveSnapshot(w, &snap)
+	world := b3.GetWorldFromId(w)
+	testing.expectf(
+		t,
+		snap.size < size_of(b3.World) + b3.ArenaUsedBytes(&world.arena),
+		"the snapshot skips no free block (%d bytes, arena %d)",
+		snap.size,
+		b3.ArenaUsedBytes(&world.arena),
+	)
+
+	run :: proc(w: b3.WorldId) -> (hashes: [12]u64) {
+		for k in 0 ..< len(hashes) {
+			if k % 4 == 1 {
+				for j in 0 ..< 50 {
+					img_box(w, .dynamicBody, {f32(j % 10) - 5, 8 + f32(k), f32(j / 10) - 2}, {0.3, 0.3, 0.3})
+				}
+			}
+			step(w, 1)
+			hashes[k] = b3.World_HashState(w)
+		}
+		return
+	}
+	first := run(w)
+	for depth in ([?]int{1, 12}) {
+		testing.expect(t, b3.World_RestoreSnapshot(w, &snap))
+		step(w, depth)
+		testing.expect(t, b3.World_RestoreSnapshot(w, &snap))
+		again := run(w)
+		for k in 0 ..< len(first) {
+			if !testing.expectf(t, first[k] == again[k], "rollback after %d ticks: tick %d differs", depth, k) {
+				return
+			}
+		}
+	}
+}

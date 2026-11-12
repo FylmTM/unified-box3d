@@ -342,59 +342,113 @@ DestroyWorldSnapshot :: proc(snapshot: ^WorldSnapshot) {
 	snapshot^ = {}
 }
 
+// A save copies the arena's used bytes in a few large ranges: everything below the top except the payloads of free
+// blocks of ARENA_SKIP_MIN bytes or more (found from the free lists of their classes, at most ARENA_SKIP_MAX of the
+// largest). Walking every block to copy only live bytes costs a cache miss per block header, more than copying the
+// small free blocks and the rounding past each request. What a snapshot holds for the skipped payloads doesn't
+// matter: nothing reads a free payload before an allocation writes it.
+@(private = "file")
+ARENA_SKIP_MIN :: 4096
+@(private = "file")
+ARENA_SKIP_MAX :: 32
+
+// The arena's byte ranges a snapshot leaves out: [begin, end) offsets, sorted.
+@(private = "file")
+ArenaSkips :: struct {
+	count:  int,
+	ranges: [ARENA_SKIP_MAX][2]u64,
+}
+
+@(private = "file")
+ArenaFindSkips :: proc(arena: ^WorldArena) -> (skips: ArenaSkips) {
+	h := header(arena)
+	for class := FloorClass(ARENA_SKIP_MIN + ARENA_BLOCK_HEADER) + 1; class < ARENA_CLASS_COUNT; class += 1 {
+		for offset := h.freeLists[class]; offset != 0; {
+			block := (^BlockHeader)(&arena.base[offset])
+			r := [2]u64{offset + ARENA_BLOCK_HEADER, offset + block.blockSize}
+			// Keep the largest: replace the smallest when full.
+			if skips.count < ARENA_SKIP_MAX {
+				skips.ranges[skips.count] = r
+				skips.count += 1
+			} else {
+				smallest := 0
+				for i in 1 ..< ARENA_SKIP_MAX {
+					si, ss := skips.ranges[i], skips.ranges[smallest]
+					if si[1] - si[0] < ss[1] - ss[0] {
+						smallest = i
+					}
+				}
+				ss := skips.ranges[smallest]
+				if r[1] - r[0] > ss[1] - ss[0] {
+					skips.ranges[smallest] = r
+				}
+			}
+			offset = block.next
+		}
+	}
+	// Sorted by offset (insertion sort: a few dozen at most).
+	for i in 1 ..< skips.count {
+		r := skips.ranges[i]
+		j := i
+		for j > 0 && skips.ranges[j - 1][0] > r[0] {
+			skips.ranges[j] = skips.ranges[j - 1]
+			j -= 1
+		}
+		skips.ranges[j] = r
+	}
+	return
+}
+
 // Copies the world into the snapshot. Call between steps.
 World_SaveSnapshot :: proc(worldId: WorldId, snapshot: ^WorldSnapshot) {
 	world := GetUnlockedWorldFromId(worldId)
 	if world == nil {
 		return
 	}
+	skips := ArenaFindSkips(&world.arena)
 	used := ArenaUsedBytes(&world.arena)
-	need := size_of(World) + used
+	need := size_of(World) + size_of(ArenaSkips) + used
 	if need > snapshot.capacity {
 		FreeHost(snapshot.data, snapshot.capacity)
 		snapshot.capacity = need + need / 4
 		snapshot.data = cast([^]u8)AllocHost(snapshot.capacity)
 	}
 	mem.copy_non_overlapping(snapshot.data, world, size_of(World))
-	snapshot.size = size_of(World) + ArenaPack(&world.arena, &snapshot.data[size_of(World)])
+	snapshot.size = size_of(World) + ArenaPack(&world.arena, &skips, &snapshot.data[size_of(World)])
 }
 
-// Copies the arena's state into `dst` (room for ArenaUsedBytes): its header, then every block's header and, for a
-// live block, the bytes it asked for (freed payloads and the rounding past a request are left out). Returns the
-// bytes written.
+// Copies the arena's state into `dst` (room for size_of(ArenaSkips) + ArenaUsedBytes): the skipped ranges, then the
+// bytes below the top outside them. Returns the bytes written.
 @(private = "file")
-ArenaPack :: proc(arena: ^WorldArena, dst: [^]u8) -> int {
-	h := header(arena)
-	start := mem.align_forward_int(size_of(ArenaHeader), ARENA_BLOCK_HEADER)
-	mem.copy_non_overlapping(dst, arena.base, start)
-	n := start
-	offset := u64(start)
-	for offset < h.top {
-		block := (^BlockHeader)(&arena.base[offset])
-		k := ARENA_BLOCK_HEADER + int(block.size)
-		mem.copy_non_overlapping(&dst[n], block, k)
-		n += k
-		offset += block.blockSize
+ArenaPack :: proc(arena: ^WorldArena, skips: ^ArenaSkips, dst: [^]u8) -> int {
+	mem.copy_non_overlapping(dst, skips, size_of(ArenaSkips))
+	n := size_of(ArenaSkips)
+	from := u64(0)
+	for i in 0 ..< skips.count {
+		r := skips.ranges[i]
+		mem.copy_non_overlapping(&dst[n], &arena.base[from], int(r[0] - from))
+		n += int(r[0] - from)
+		from = r[1]
 	}
-	return n
+	top := header(arena).top
+	mem.copy_non_overlapping(&dst[n], &arena.base[from], int(top - from))
+	return n + int(top - from)
 }
 
-// The inverse of ArenaPack: puts the packed state back at the same offsets.
+// The inverse of ArenaPack: puts the packed bytes back at the same offsets.
 @(private = "file")
 ArenaUnpack :: proc(arena: ^WorldArena, src: [^]u8, size: int) {
-	start := mem.align_forward_int(size_of(ArenaHeader), ARENA_BLOCK_HEADER)
-	mem.copy_non_overlapping(arena.base, src, start)
-	h := header(arena)
-	n := start
-	offset := u64(start)
-	for offset < h.top {
-		block := (^BlockHeader)(&src[n])
-		k := ARENA_BLOCK_HEADER + int(block.size)
-		mem.copy_non_overlapping(&arena.base[offset], block, k)
-		n += k
-		offset += block.blockSize
+	skips := (^ArenaSkips)(src)
+	n := size_of(ArenaSkips)
+	from := u64(0)
+	for i in 0 ..< skips.count {
+		r := skips.ranges[i]
+		mem.copy_non_overlapping(&arena.base[from], &src[n], int(r[0] - from))
+		n += int(r[0] - from)
+		from = r[1]
 	}
-	assert(n == size)
+	mem.copy_non_overlapping(&arena.base[from], &src[n], size - n)
+	assert(header(arena).top == from + u64(size - n))
 }
 
 // Puts the world back to the snapshot's state. The snapshot must come from this world (any earlier tick).
