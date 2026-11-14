@@ -403,6 +403,10 @@ SerNames :: proc(buf: ^RecBuffer, cache: ^NameCache) {
 
 @(private = "file")
 DesNames :: proc(r: ^SnapReader, cache: ^NameCache) {
+	// unified: the name cache is host-side (world_arena.odin): its entries and strings must not come from the world's
+	// arena, which a snapshot restore puts back without them
+	HostScope()
+	// unified end
 	count := SnapR_I32(r)
 
 	if r.ok && SnapCheckCount(r, count, i32(size_of(NameEntry)), 8) == false {
@@ -674,6 +678,13 @@ DesShapes :: proc(r: ^SnapReader, world: ^World, rdr: ^RecReader) {
 		}
 
 		geoKind := SnapR_I32(r)
+		// unified: the struct's type names the union member the code reads; a geometry of another kind would be read
+		// as it (sphere floats as a hull pointer)
+		if geoKind != i32(dst.type) {
+			r.ok = false
+			break
+		}
+		// unified end
 
 		// Geometry
 		#partial switch ShapeType(geoKind) {

@@ -79,7 +79,8 @@ B3_API bool b3World_RestoreStateFromBytes( b3WorldId worldId, b3WorldStateCache*
 B3_API int b3World_SaveImage( b3WorldId worldId, b3WorldState* state, bool withGeometry );
 
 /// Load an image saved by b3World_SaveImage (in any process, for a self-contained image) over the world, in place.
-/// Returns false on a bad image; an image naming geometry this world lacks is refused before the world is touched.
+/// Safe on any bytes (an image can come from anyone): it loads a world whose every index, link, tree and geometry blob
+/// checks out, or returns false and leaves the world as it was.
 B3_API bool b3World_LoadImage( b3WorldId worldId, const uint8_t* bytes, int size );
 
 /// The checksum of the world: a hash of its canonical image, with geometry by content hash. Equal states give equal

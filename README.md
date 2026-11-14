@@ -37,7 +37,8 @@ Every deviation is marked `// unified: <why>` in the code; [SPEC.md](SPEC.md) li
   (contacts, warm starts, islands, trees: everything) in-process, for rollback.
 - **Canonical, portable images:** `b3World_SaveImage` / `b3World_LoadImage` write the same bytes for the same state on
   every platform (no pointer or padding bytes) and carry their geometry, so a late joiner can load a world whose
-  hulls, meshes and compounds were created after the game began.
+  hulls, meshes and compounds were created after the game began. Loading is safe on any bytes: an image from a
+  hostile peer loads a world that checks out, or is refused and leaves the world as it was.
 - **A whole-world checksum:** `b3World_HashState` hashes the canonical image, so a desync is caught at the tick it
   happens, internals included. `b3World_HashAwakeBodies` is a cheap one (the awake bodies' poses and velocities) for
   the ticks in between.
@@ -118,7 +119,7 @@ with the original). `./b3 help` (`b3.cmd` on Windows) lists the commands:
 
 ```
 ./b3 build      # the shared library for this platform (lib/)
-./b3 test       # upstream's tests, ours, and the bindings against the library
+./b3 test       # upstream's tests, ours, the image fuzz, and the bindings against the library
 ./b3 compare    # the original Box3D and this library, side by side
 ./b3 bench      # the scaling benchmark: the port compiled in, through the library (--original: on the original)
 ```

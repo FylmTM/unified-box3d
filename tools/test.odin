@@ -14,14 +14,14 @@ register_test :: proc "contextless" () {
 	register(
 		Command {
 			name = "test",
-			usage = "[upstream|port|bindings]... [--debug]",
-			summary = "run the test suites (default: all, in that order; --debug: bindings against the debug library)",
+			usage = "[upstream|port|fuzz|bindings]... [--debug]",
+			summary = "run the test suites (default: all, in that order; fuzz: images from anyone, asserts off and bounds checks on; --debug: bindings against the debug library)",
 			run = cmd_test,
 		},
 	)
 }
 
-TEST_SUITES := [?]string{"upstream", "port", "bindings"}
+TEST_SUITES := [?]string{"upstream", "port", "fuzz", "bindings"}
 
 EXE :: ".exe" when ODIN_OS == .Windows else ""
 
@@ -65,7 +65,13 @@ cmd_test :: proc(args: []string) -> bool {
 			}
 			continue
 		}
-		if !run({"odin", "test", path("tests", suite), fmt.tprintf("-out:%s", exe)}) {
+		cmd := make([dynamic]string, context.temp_allocator)
+		append(&cmd, "odin", "test", path("tests", suite), fmt.tprintf("-out:%s", exe))
+		if suite == "fuzz" {
+			// Out-of-bounds accesses fail it; Box3D's numeric asserts (a world simulating badly) don't (image_fuzz_test.odin).
+			append(&cmd, "-disable-assert")
+		}
+		if !run(cmd[:]) {
 			return fail("test: %s FAILED", suite)
 		}
 	}
