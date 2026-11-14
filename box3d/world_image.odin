@@ -144,14 +144,26 @@ World_SaveImage :: proc(worldId: WorldId, state: ^WorldState, withGeometry: bool
 }
 
 // Load an image saved by World_SaveImage (in any process, for a self-contained image) over the world, in place.
-// Returns false on a bad image; an image naming geometry this world lacks is refused before the world is touched.
+// Returns false on a bad image and leaves the world as it was. An image can come from anyone: whatever its bytes,
+// it loads a world that is safe to use, or is refused (image_validate.odin).
 World_LoadImage :: proc(worldId: WorldId, bytes: []u8) -> bool {
 	world := GetWorldFromId(worldId)
 	assert(world.locked == false)
 	if world.locked || len(bytes) == 0 || len(bytes) > int(max(i32)) {
 		return false
 	}
-	return DeserializeIntoShell(raw_data(bytes), i32(len(bytes)), world, nil)
+	// unified: a failed load can stop halfway, so the world is saved first and put back on failure; what loaded is
+	// checked before it is used (image_validate.odin)
+	backup: WorldSnapshot
+	World_SaveSnapshot(worldId, &backup)
+	defer DestroyWorldSnapshot(&backup)
+	if DeserializeIntoShell(raw_data(bytes), i32(len(bytes)), world, nil) && ValidLoadedWorld(world) {
+		return true
+	}
+	restored := World_RestoreSnapshot(worldId, &backup)
+	assert(restored)
+	return false
+	// unified end
 }
 
 // The checksum of the world: rapidhash of its canonical image, with geometry by content hash. Equal states give
@@ -375,7 +387,7 @@ ImageStoreLoad :: proc(img: ^WorldImageData, kind: GeometryKind, hash: u64, byte
 		(^u64)(copy)^ == version &&
 		storedCount == byteCount &&
 		BakedContentHash(kind, copy, byteCount) == hash &&
-		(kind != .geometryHull || IsValidHull((^HullData)(copy)))
+		ValidGeometryBlob(kind, copy, byteCount) // unified: any bytes (image_validate.odin)
 	if !ok {
 		FreeHost(copy, int(byteCount))
 		return nil
