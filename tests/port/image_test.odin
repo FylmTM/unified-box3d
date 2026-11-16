@@ -286,6 +286,49 @@ image_late_join :: proc(t: ^testing.T) {
 	}
 }
 
+// A body destroyed after the step leaves the awake set smaller than the step's move events, so a body can keep a move
+// index past the awake bodies: valid (the next step rewrites it), and an image of that world loads and runs on.
+@(test)
+image_after_a_destroy_loads :: proc(t: ^testing.T) {
+	w := world_make()
+	defer world_destroy(w)
+	img_box(w, .staticBody, {0, -0.5, 0}, {20, 0.5, 20})
+	boxes: [8]b3.BodyId
+	for &box, i in boxes {
+		box = img_box(w, .dynamicBody, {f32(i) * 2 - 7, 3, 0}, {0.5, 0.5, 0.5})
+	}
+	step(w, 10)
+	b3.DestroyBody(boxes[0]) // the first awake body: the last one's sim moves into its place
+	b3.DestroyBody(boxes[1])
+	state := b3.CreateWorldState()
+	defer b3.DestroyWorldState(state)
+	testing.expect(t, b3.World_SaveImage(w, state, true) > 0)
+	late := world_make()
+	defer world_destroy(late)
+	if !testing.expect(
+		t,
+		b3.World_LoadImage(late, img_bytes(state)),
+		"the image of a world with a body destroyed after the step loads",
+	) {
+		return
+	}
+	testing.expect_value(t, b3.World_HashState(late), b3.World_HashState(w))
+	// A body put to sleep before the first step after the load: its move index names no event the late world has.
+	b3.Body_SetAwake(boxes[7], false)
+	b3.Body_SetAwake(
+		b3.BodyId{index1 = boxes[7].index1, world0 = u16(late.index1 - 1), generation = boxes[7].generation},
+		false,
+	)
+	testing.expect_value(t, b3.World_HashState(late), b3.World_HashState(w))
+	for tick in 1 ..= 60 {
+		step(w, 1)
+		step(late, 1)
+		if !testing.expectf(t, b3.World_HashState(w) == b3.World_HashState(late), "tick %d after the load", tick) {
+			return
+		}
+	}
+}
+
 // A by-reference image restores in place: the hash of the image is the world's hash, and the run continues as
 // before.
 @(test)
