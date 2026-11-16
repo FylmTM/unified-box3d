@@ -237,11 +237,15 @@ TrySleepIsland :: proc(world: ^World, islandId: i32) {
 
 			// Update the body move event to indicate this body fell asleep
 			// It could happen the body is forced asleep before it ever moves.
+			// unified: only an event this world has for this body (a loaded image carries a move index, not the
+			// events, which the next step rebuilds); the index goes either way
 			if body.bodyMoveIndex != NULL_INDEX {
-				moveEvent := Array_Get(&world.bodyMoveEvents, body.bodyMoveIndex)
-				assert(moveEvent.bodyId.index1 - 1 == bodyId)
-				assert(moveEvent.bodyId.generation == body.generation)
-				moveEvent.fellAsleep = true
+				if body.bodyMoveIndex < world.bodyMoveEvents.count {
+					moveEvent := Array_Get(&world.bodyMoveEvents, body.bodyMoveIndex)
+					if moveEvent.bodyId.index1 - 1 == bodyId && moveEvent.bodyId.generation == body.generation {
+						moveEvent.fellAsleep = true
+					}
+				}
 				body.bodyMoveIndex = NULL_INDEX
 			}
 

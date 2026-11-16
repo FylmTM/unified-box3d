@@ -821,10 +821,13 @@ ValidLoadedWorld :: proc(world: ^World) -> bool {
 		if body.id != b {
 			continue
 		}
+		// unified: a move index names the body's slot in the last step's move events, which can outnumber the awake
+		// bodies now (a body destroyed or put to sleep after the step), and images don't carry the events: it only has to
+		// stay inside the bodies' range (TrySleepIsland checks it against the events it has)
 		if !liveSet(world, body.setIndex) ||
 		   !In(i32(body.type), i32(BodyType.bodyTypeCount)) ||
 		   body.headChainId != NULL_INDEX ||
-		   (body.bodyMoveIndex != NULL_INDEX && !In(body.bodyMoveIndex, awake.bodySims.count)) ||
+		   (body.bodyMoveIndex != NULL_INDEX && !In(body.bodyMoveIndex, bodies)) ||
 		   !Finite(body.sleepThreshold) ||
 		   !Finite(body.sleepTime) ||
 		   !Finite(body.sleepVelocity) ||
