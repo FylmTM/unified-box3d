@@ -136,7 +136,7 @@ img_scene_make :: proc(s: ^Img_Scene) {
 	sphere := b3.Sphere{{0, 0, 0}, 0.3}
 	b3.CreateSphereShape(ball, &sd, &sphere)
 
-	// A custom hull and a compound of two spheres and a capsule
+	// A custom hull falling onto a compound of two spheres and a capsule (compounds are static-only)
 	s.hull = img_custom_hull(1)
 	hb := img_body(w, .dynamicBody, {2, 3, 2})
 	b3.CreateHullShape(hb, &sd, s.hull)
@@ -154,7 +154,7 @@ img_scene_make :: proc(s: ^Img_Scene) {
 		capsuleCount = 1,
 	}
 	s.compound = b3.CreateCompound(&cd)
-	cb := img_body(w, .dynamicBody, {-3, 4, 3})
+	cb := img_body(w, .staticBody, {2, 0.3, 2})
 	b3.CreateBakedCompoundShape(cb, &sd, s.compound)
 
 	// Joints: distance and weld between boxes, motor, mover and pogo to the ground

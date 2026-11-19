@@ -346,9 +346,10 @@ ValidCompoundBlob :: proc(compound: ^CompoundData, limit: i64) -> bool {
 	if children < 1 || children >= MAX_CHILD_SHAPES {
 		return false
 	}
-	// An array with no elements has offset 0 (the getters return nil); one with elements lies inside.
+	// An array with elements lies inside. An empty one is never read: CreateCompound (as upstream's) gives it the
+	// running offset, where it would start, and an offset of 0 (the getters return nil) is accepted too.
 	present :: proc(offset, count: i32, size: i64, header, n: i64) -> bool {
-		return count == 0 ? offset == 0 : Fits(i64(offset), i64(count), size, header, n)
+		return Fits(i64(offset), i64(count), size, header, n) || (count == 0 && offset == 0)
 	}
 	if !present(compound.materialOffset, compound.materialCount, size_of(SurfaceMaterial), header, n) ||
 	   !present(compound.capsuleOffset, capsules, size_of(CompoundCapsule), header, n) ||
