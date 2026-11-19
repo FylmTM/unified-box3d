@@ -101,7 +101,7 @@ img_scene_make :: proc(s: ^Img_Scene) {
 	sphere := b3.Sphere{{0, 0, 0}, 0.3}
 	b3.CreateSphereShape(ball, &sd, &sphere)
 
-	// A custom hull and a compound of two spheres and a capsule
+	// A custom hull falling onto a compound of two spheres and a capsule (compounds are static-only)
 	s.hull = img_custom_hull(1)
 	hb := img_body(w, .dynamicBody, {2, 3, 2})
 	b3.CreateHullShape(hb, &sd, s.hull)
@@ -119,7 +119,7 @@ img_scene_make :: proc(s: ^Img_Scene) {
 		capsuleCount = 1,
 	}
 	s.compound = b3.CreateCompound(&cd)
-	cb := img_body(w, .dynamicBody, {-3, 4, 3})
+	cb := img_body(w, .staticBody, {2, 0.3, 2})
 	b3.CreateBakedCompoundShape(cb, &sd, s.compound)
 
 	// Joints: distance and weld between boxes, motor, mover and pogo to the ground
@@ -282,6 +282,89 @@ image_late_join :: proc(t: ^testing.T) {
 		ha, hb := b3.World_HashState(s.world), b3.World_HashState(late)
 		if !testing.expectf(t, ha == hb, "tick %d after the late join: %x != %x", tick, ha, hb) {
 			return
+		}
+	}
+}
+
+// A compound of any mix of child kinds crosses an image: for each non-empty subset of capsules, hulls, meshes and
+// spheres, a world with that compound under falling boxes saves with its geometry, loads into a fresh world with the
+// same hash, and both step on bit for bit (CreateCompound gives an empty child array a non-zero offset).
+@(test)
+image_compound_child_kinds :: proc(t: ^testing.T) {
+	material := b3.DefaultSurfaceMaterial()
+	hull := b3.MakeBoxHull(0.4, 0.4, 0.4)
+	mesh := b3.CreateGridMesh(4, 4, 0.5, 0, true)
+	defer b3.DestroyMesh(mesh)
+	capsules := [1]b3.CompoundCapsuleDef{{capsule = {{-0.3, 0, 0}, {0.3, 0, 0}, 0.2}, material = material}}
+	hulls := [2]b3.CompoundHullDef {
+		{hull = &hull.base, transform = {{-1, 0, 0}, b3.Quat_identity}, material = material},
+		{hull = &hull.base, transform = {{1, 0, 0}, b3.Quat_identity}, material = material},
+	}
+	meshes := [1]b3.CompoundMeshDef {
+		{
+			meshData = mesh,
+			transform = {{-1, -0.5, -1}, b3.Quat_identity},
+			scale = {1, 1, 1},
+			materials = &material,
+			materialCount = 1,
+		},
+	}
+	spheres := [1]b3.CompoundSphereDef{{sphere = {{0, 0, 1}, 0.3}, material = material}}
+
+	for kinds in 1 ..< 16 {
+		cd: b3.CompoundDef
+		if kinds & 1 != 0 {
+			cd.capsules, cd.capsuleCount = &capsules[0], len(capsules)
+		}
+		if kinds & 2 != 0 {
+			cd.hulls, cd.hullCount = &hulls[0], len(hulls)
+		}
+		if kinds & 4 != 0 {
+			cd.meshes, cd.meshCount = &meshes[0], len(meshes)
+		}
+		if kinds & 8 != 0 {
+			cd.spheres, cd.sphereCount = &spheres[0], len(spheres)
+		}
+		compound := b3.CreateCompound(&cd)
+		defer b3.DestroyCompound(compound)
+
+		w := world_make()
+		defer world_destroy(w)
+		sd := img_shape_def()
+		shape := b3.CreateBakedCompoundShape(img_body(w, .staticBody, {0, 0, 0}), &sd, compound)
+		testing.expect(t, b3.Shape_IsValid(shape))
+		// A box over every child, so the image carries contacts with each kind
+		for p in ([4]b3.Vec3{{-1, 1, 0}, {0, 1, 0}, {1, 1, 0}, {0, 1, 1}}) {
+			img_box(w, .dynamicBody, p, {0.2, 0.2, 0.2})
+		}
+		step(w, 20)
+
+		state := b3.CreateWorldState()
+		defer b3.DestroyWorldState(state)
+		testing.expect(t, b3.World_SaveImage(w, state, true) > 0)
+		late := world_make()
+		defer world_destroy(late)
+		if !testing.expectf(t, b3.World_LoadImage(late, img_bytes(state)), "kinds %4b: the image loads", kinds) {
+			continue
+		}
+		testing.expectf(
+			t,
+			b3.World_HashState(late) == b3.World_HashState(w),
+			"kinds %4b: the hash after the load",
+			kinds,
+		)
+		for tick in 1 ..= 30 {
+			step(w, 1)
+			step(late, 1)
+			if !testing.expectf(
+				t,
+				b3.World_HashState(late) == b3.World_HashState(w),
+				"kinds %4b: tick %d after the load",
+				kinds,
+				tick,
+			) {
+				break
+			}
 		}
 	}
 }
