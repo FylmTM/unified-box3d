@@ -591,13 +591,13 @@ CreateCompound :: proc(def: ^CompoundDef) -> ^CompoundData {
 	compound.nodeCount = tree.nodeEnd
 	compound.materialOffset = materialOffset
 	compound.materialCount = materialCount
-	compound.capsuleOffset = capsuleOffset
+	compound.capsuleOffset = capsuleCount > 0 ? capsuleOffset : 0
 	compound.capsuleCount = capsuleCount
-	compound.hullOffset = hullArrayOffset
+	compound.hullOffset = hullCount > 0 ? hullArrayOffset : 0
 	compound.hullCount = hullCount
-	compound.meshOffset = meshArrayOffset
+	compound.meshOffset = meshCount > 0 ? meshArrayOffset : 0
 	compound.meshCount = meshCount
-	compound.sphereOffset = sphereOffset
+	compound.sphereOffset = sphereCount > 0 ? sphereOffset : 0
 	compound.sphereCount = sphereCount
 
 	// Tree nodes

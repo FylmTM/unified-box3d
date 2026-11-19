@@ -387,3 +387,72 @@ img_contact_impulse :: proc(id: b3.WorldId) -> ^f32 {
 	}
 	return nil
 }
+
+// Every non-empty mix must cross an image, including compounds whose other child arrays are empty.
+@(test)
+image_compound_child_kind_mixes :: proc(t: ^testing.T) {
+	material := b3.DefaultSurfaceMaterial()
+	box := b3.MakeBoxHull(0.5, 0.5, 0.5)
+	mesh := b3.CreateGridMesh(2, 2, 1, 0, false)
+	defer b3.DestroyMesh(mesh)
+	capsules := [2]b3.CompoundCapsuleDef {
+		{capsule = {{0, 0, 0}, {0, 1, 0}, 0.2}, material = material},
+		{capsule = {{2, 0, 0}, {2, 1, 0}, 0.2}, material = material},
+	}
+	hulls := [2]b3.CompoundHullDef {
+		{hull = &box.base, transform = b3.Transform_identity, material = material},
+		{hull = &box.base, transform = {{2, 0, 0}, b3.Quat_identity}, material = material},
+	}
+	meshes := [2]b3.CompoundMeshDef {
+		{
+			meshData = mesh, transform = b3.Transform_identity, scale = {1, 1, 1},
+			materials = &material, materialCount = 1,
+		},
+		{
+			meshData = mesh, transform = {{2, 0, 0}, b3.Quat_identity}, scale = {1, 1, 1},
+			materials = &material, materialCount = 1,
+		},
+	}
+	spheres := [2]b3.CompoundSphereDef {
+		{sphere = {{0, 0, 0}, 0.3}, material = material},
+		{sphere = {{2, 0, 0}, 0.3}, material = material},
+	}
+	for mask in 1 ..< 16 {
+		cd: b3.CompoundDef
+		if mask & 1 != 0 {
+			cd.capsules, cd.capsuleCount = &capsules[0], 2
+		}
+		if mask & 2 != 0 {
+			cd.hulls, cd.hullCount = &hulls[0], 2
+		}
+		if mask & 4 != 0 {
+			cd.meshes, cd.meshCount = &meshes[0], 2
+		}
+		if mask & 8 != 0 {
+			cd.spheres, cd.sphereCount = &spheres[0], 2
+		}
+		compound := b3.CreateCompound(&cd)
+		if !testing.expect(t, compound != nil) {
+			return
+		}
+		defer b3.DestroyCompound(compound)
+		testing.expectf(t, (compound.capsuleOffset == 0) == (cd.capsuleCount == 0), "capsule offset, mix %d", mask)
+		testing.expectf(t, (compound.hullOffset == 0) == (cd.hullCount == 0), "hull offset, mix %d", mask)
+		testing.expectf(t, (compound.meshOffset == 0) == (cd.meshCount == 0), "mesh offset, mix %d", mask)
+		testing.expectf(t, (compound.sphereOffset == 0) == (cd.sphereCount == 0), "sphere offset, mix %d", mask)
+		w := world_make()
+		defer world_destroy(w)
+		body := img_body(w, .staticBody, {})
+		sd := img_shape_def()
+		b3.CreateBakedCompoundShape(body, &sd, compound)
+		state := b3.CreateWorldState()
+		defer b3.DestroyWorldState(state)
+		testing.expect(t, b3.World_SaveImage(w, state, true) > 0)
+		late := world_make()
+		defer world_destroy(late)
+		if !testing.expectf(t, b3.World_LoadImage(late, img_bytes(state)), "load compound mix %d", mask) {
+			continue
+		}
+		testing.expect_value(t, b3.World_HashState(late), b3.World_HashState(w))
+	}
+}
