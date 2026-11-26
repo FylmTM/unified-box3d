@@ -5,8 +5,8 @@
 //   traversal stacks, floats finite (ValidGeometryBlob, from ImageStoreLoad);
 // - the world (ValidLoadedWorld): every id in range and live, every back-link (body <-> set <-> sims, shapes,
 //   contacts and joints <-> their edges, islands, graph colors, sensors, broad-phase proxies), every list walk
-//   bounded, the broad-phase trees, the id pools, the pair set, enums, and the floats that become positions and
-//   boxes finite.
+//   bounded, the broad-phase trees, the id pools, the pair set, enums, every live name known, and the floats that
+//   become positions and boxes finite.
 // Nothing here asserts or follows an index it has not checked. The rules are the invariants upstream's
 // ValidateSolverSets, ValidateContacts, ValidateConnectivity and DynamicTree_Validate assert (physics_world.odin,
 // dynamic_tree.odin), made total.
@@ -633,6 +633,19 @@ ValidLoadedWorld :: proc(world: ^World) -> bool {
 	}
 	for s in 0 ..< i32(SetType.firstSleepingSet) {
 		if world.solverSets.data[s].setIndex != s {
+			return false
+		}
+	}
+	// Every live body's and shape's name is known (an image carries them, ImageWriteNames)
+	for i in 0 ..< bodies {
+		body := &world.bodies.data[i]
+		if body.id == i && body.nameId != NULL_NAME && FindName(&world.names, body.nameId) == nil {
+			return false
+		}
+	}
+	for i in 0 ..< shapes {
+		shape := &world.shapes.data[i]
+		if shape.id == i && shape.nameId != NULL_NAME && FindName(&world.names, shape.nameId) == nil {
 			return false
 		}
 	}

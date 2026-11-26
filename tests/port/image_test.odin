@@ -470,3 +470,76 @@ img_contact_impulse :: proc(id: b3.WorldId) -> ^f32 {
 	}
 	return nil
 }
+
+// A named body with a named shape.
+@(private = "file")
+img_named :: proc(w: b3.WorldId) -> b3.BodyId {
+	bd := b3.DefaultBodyDef()
+	bd.type = .dynamicBody
+	bd.position = {0, 2, 0}
+	bd.name = "pelvis"
+	body := b3.CreateBody(w, &bd)
+	sd := img_shape_def()
+	sd.name = "hip"
+	sphere := b3.Sphere{{0, 0, 0}, 0.25}
+	b3.CreateSphereShape(body, &sd, &sphere)
+	return body
+}
+
+// An image carries the names its live bodies and shapes have, whatever names the world's cache once held: a world
+// restored to before a named body was made hashes as one that never saw the name, and making the body again hashes
+// as the first time; a late joiner reads the name back.
+@(test)
+image_names_of_live_bodies :: proc(t: ^testing.T) {
+	w := world_make()
+	defer world_destroy(w)
+	img_box(w, .staticBody, {0, -0.5, 0}, {5, 0.5, 5})
+	snap: b3.WorldSnapshot
+	defer b3.DestroyWorldSnapshot(&snap)
+	b3.World_SaveSnapshot(w, &snap)
+	before := b3.World_HashState(w)
+	img_named(w)
+	first := b3.World_HashState(w)
+	testing.expect(t, first != before, "the name is in the image")
+	testing.expect(t, b3.World_RestoreSnapshot(w, &snap))
+	testing.expect_value(t, b3.World_HashState(w), before)
+	body := img_named(w)
+	testing.expect_value(t, b3.World_HashState(w), first)
+
+	// A world whose cache held the names in another order, and one more that no body keeps.
+	fresh := world_make()
+	defer world_destroy(fresh)
+	ground := img_box(fresh, .staticBody, {0, -0.5, 0}, {5, 0.5, 5})
+	b3.Body_SetName(ground, "hip")
+	b3.Body_SetName(ground, "stale")
+	b3.Body_SetName(ground, nil)
+	testing.expect_value(t, b3.World_HashState(fresh), before)
+	img_named(fresh)
+	testing.expect_value(t, b3.World_HashState(fresh), first)
+
+	full := b3.CreateWorldState()
+	defer b3.DestroyWorldState(full)
+	testing.expect(t, b3.World_SaveImage(w, full, true) > 0)
+	late := world_make()
+	defer world_destroy(late)
+	testing.expect(t, b3.World_LoadImage(late, img_bytes(full)))
+	testing.expect_value(t, b3.World_HashState(late), first)
+	testing.expect_value(t, string(b3.Body_GetName(body)), "pelvis")
+	late_body := b3.BodyId{body.index1, u16(late.index1 - 1), body.generation}
+	testing.expect_value(t, string(b3.Body_GetName(late_body)), "pelvis")
+
+	// The same image without its names (the section it ends with: a count, then each id, length and bytes) is
+	// refused where the names are unknown, and loads where they are known.
+	bytes := img_bytes(full)
+	section := 4 + (8 + len("pelvis")) + (8 + len("hip"))
+	nameless := make([]u8, len(bytes) - section + 4)
+	defer delete(nameless)
+	copy(nameless, bytes[:len(bytes) - section])
+	stranger := world_make()
+	defer world_destroy(stranger)
+	h := b3.World_HashState(stranger)
+	testing.expect(t, !b3.World_LoadImage(stranger, nameless))
+	testing.expect_value(t, b3.World_HashState(stranger), h)
+	testing.expect(t, b3.World_LoadImage(late, nameless))
+	testing.expect_value(t, b3.World_HashState(late), first)
+}
