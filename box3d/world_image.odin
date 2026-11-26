@@ -17,11 +17,17 @@
 // against the store (by content hash) before touching the world, so an image naming geometry this world never saw
 // is refused cleanly. Hulls then go through the world's hull database as upstream's loader does; mesh, height field
 // and compound shapes point at the store's copy.
+//
+// The names an image carries are the ones its live bodies and shapes have, in id order: a function of the world's
+// state like every other byte. The world's name cache is host-side and append-only (a restore keeps every name a
+// rolled-back body was given), so an image of all of it would hash a world rolled back to before a named body
+// otherwise than one that never saw it.
 package box3d
 
 import "base:intrinsics"
 import "base:runtime"
 import "core:mem"
+import "core:slice"
 
 // Image header flags (SnapHeader.flags), next to upstream's validation and double-precision flags.
 SNAP_FLAG_GEOMETRY_TABLE :: u32(0x4) // shapes name geometry by an index into the image's own table
@@ -71,6 +77,7 @@ WorldImageData :: struct {
 	shapeGeometry: [dynamic]i32, // per shape slot: table index, -1 for none
 	slots:         [dynamic]RegistrySlot, // the table of the image being read, resolved to the store's blobs
 	reader:        RecReader, // a reader over slots, for DeserializeIntoShell's DesShapes
+	nameIds:       [dynamic]u32, // the names of the image being written (ImageWriteNames)
 
 	// World_HashState's image
 	hashBuffer:    RecBuffer,
@@ -114,6 +121,7 @@ ReleaseWorldImageData :: proc(img: ^WorldImageData) {
 	delete(img.tableByPtr)
 	delete(img.shapeGeometry)
 	delete(img.slots)
+	delete(img.nameIds)
 	RecBufFree(&img.hashBuffer)
 	img^ = {}
 }
@@ -314,6 +322,37 @@ ImageWriteTable :: proc(img: ^WorldImageData, buf: ^RecBuffer) {
 		if img.embed {
 			RecBufAppend(buf, e.bytes, e.byteCount)
 		}
+	}
+}
+
+// Write the names the world's live bodies and shapes have, in id order, as upstream's name section (a count, then
+// each name's id, length and bytes): what DesNames loads.
+ImageWriteNames :: proc(img: ^WorldImageData, buf: ^RecBuffer, world: ^World) {
+	clear(&img.nameIds)
+	for i: i32 = 0; i < world.bodies.count; i += 1 {
+		body := &world.bodies.data[i]
+		if body.id == i && body.nameId != NULL_NAME {
+			append(&img.nameIds, body.nameId)
+		}
+	}
+	for i: i32 = 0; i < world.shapes.count; i += 1 {
+		shape := &world.shapes.data[i]
+		if shape.id == i && shape.nameId != NULL_NAME {
+			append(&img.nameIds, shape.nameId)
+		}
+	}
+	slice.sort(img.nameIds[:])
+	ids := slice.unique(img.nameIds[:])
+
+	count := i32(len(ids))
+	RecBufAppend(buf, &count, 4)
+	for &id in ids {
+		name := FindName(&world.names, id)
+		assert(name != nil, "a live body or shape has a name the world's cache lacks") // ValidLoadedWorld
+		length := i32(len(name))
+		RecBufAppend(buf, &id, 4)
+		RecBufAppend(buf, &length, 4)
+		RecBufAppend(buf, rawptr(name), length)
 	}
 }
 

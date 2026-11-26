@@ -69,6 +69,9 @@ For rollback:
   `GEOMETRY_TABLE`, `GEOMETRY_BYTES`: per blob kind, byte count, content hash, optionally the bytes), and shapes
   name geometry by table index. `DeserializeIntoShell` resolves the table against the world's geometry store (host
   memory, append-only, verifying carried blobs) before it touches the world. Recording keyframes keep the registry.
+- **Images carry the names live bodies and shapes have**, in id order, not the whole name cache (host memory,
+  append-only, kept by a restore): a world restored to before a named body images as one that never saw the name.
+  Recording keyframes keep upstream's whole cache.
 - **Images from anyone** (`image_validate.odin`): a late joiner's image can come from a hostile peer, so
   `World_LoadImage` checks what it loaded before the world is used. Each carried geometry blob: offsets and counts
   inside it, every index in range, BVHs acyclic and no deeper than the traversal stacks, compounds' embedded hulls

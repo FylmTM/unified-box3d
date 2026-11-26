@@ -1095,7 +1095,13 @@ SerializeWorld :: proc(world: ^World, buf: ^RecBuffer, rec: ^Recording, img: ^Wo
 		SerGraphColor(buf, &graph.colors[c], c == OVERFLOW_INDEX)
 	}
 
-	SerNames(buf, &world.names)
+	// unified: an image carries the names its live bodies and shapes have (world_image.odin)
+	if img != nil {
+		ImageWriteNames(img, buf, world)
+	} else {
+		SerNames(buf, &world.names)
+	}
+	// unified end
 
 	return buf.size - startSize
 }
